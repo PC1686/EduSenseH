@@ -84,14 +84,14 @@ const Login = () => {
               disabled={loading}
               className="w-full mt-2 bg-sky-500 text-white py-2.5 px-4 rounded-xl hover:bg-sky-400 transition text-sm font-medium disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {loading ? 'Signing in...' : 'Login'}
+               {loading ? 'Signing in...' : 'Login'}
             </button>
           </form>
 
           <p className="mt-5 text-center text-xs text-slate-400">
             Don&apos;t have an account?{' '}
             <Link to="/register" className="text-sky-400 hover:text-sky-300 font-medium">
-              Create one
+              Create one 
             </Link>
           </p>
         </div>

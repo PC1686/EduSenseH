@@ -124,7 +124,7 @@ const Register = () => {
             </button>
           </form>
 
-          <p className="mt-5 text-center text-xs text-slate-400">
+           <p className="mt-5 text-center text-xs text-slate-400">
             Already have an account?{' '}
             <Link to="/login" className="text-sky-400 hover:text-sky-300 font-medium">
               Login here

@@ -41,7 +41,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
     },
     realtime: {
       params: {
-        eventsPerSecond: 10,
+         eventsPerSecond: 10,
       },
     },
   });
