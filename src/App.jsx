@@ -97,7 +97,7 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute>
               <Navbar>
-                 <ArchiveClass />
+                  <ArchiveClass />
               </Navbar>
             </ProtectedRoute>
           }
