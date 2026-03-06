@@ -39,11 +39,11 @@ export const ClassesProvider = ({ children }) => {
     classes,
     loading,
     fetchClasses,
-  }), [classes, loading, fetchClasses]);
+  }), [ classes, loading,  fetchClasses]);
 
   return (
     <ClassesContext.Provider value={value}>
-      {children}
+      { children}
     </ClassesContext.Provider>
   );
 };
