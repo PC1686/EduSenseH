@@ -126,7 +126,7 @@ export function cancelAudioRecording() {
  * Clean up resources (stop tracks and reset state)
  */
 function cleanup() {
-  if (mediaStream) {
+   if (mediaStream) {
     mediaStream.getTracks().forEach(track => track.stop());
     mediaStream = null;
   }
