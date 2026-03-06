@@ -6,7 +6,7 @@ const Welcome = () => {
   const navigate = useNavigate();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50 flex items-center justify-center px-8 py-12">
+    <div className="min-h-screen bg-linear-to-br from-gray-50 to-blue-50 flex items-center justify-center px-8 py-12">
       <div className="max-w-7xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-12">
         {/* Left Section */}
         <div className="lg:w-1/2 text-center lg:text-left">
