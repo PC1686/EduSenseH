@@ -447,7 +447,7 @@ function Resources() {
                                                                     className={`shrink-0 h-5 w-5 rounded-full border flex items-center justify-center transition text-xs font-semibold ${isSelected ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-gray-300 text-gray-600'
                                                                         }`}
                                                                 >
-                                                                    {String.fromCharCode(65 + oIndex)}
+                                                                     {String.fromCharCode(65 + oIndex)}
                                                                 </span>
 
                                                                 <span className="flex-1">{option}</span>
