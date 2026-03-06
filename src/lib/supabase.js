@@ -9,8 +9,8 @@ const createMockSupabase = () => ({
   auth: {
     getSession: () => Promise.resolve({ data: { session: null } }),
     onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => { } } } }),
-    signInWithPassword: () => Promise.reject(new Error('Supabase not configured')),
-    signUp: () => Promise.reject(new Error('Supabase not configured')),
+    signInWithPassword: () => Promise.reject(new Error('Supabase not  configured')),
+    signUp: () => Promise.reject(new Error('Supabase not  configured')),
     signOut: () => Promise.resolve(),
   },
   from: () => ({
