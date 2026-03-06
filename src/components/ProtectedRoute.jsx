@@ -2,7 +2,7 @@ import React from 'react'
 
 const ProtectedRoute = () => {
   return (
-    <div>Protected rahul Route</div>
+    <div>ProtectedRoute</div>
   )
 }
 
