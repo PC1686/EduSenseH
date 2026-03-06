@@ -421,7 +421,7 @@ const Chat = () => {
                         return (
                             <div key={msg.id} className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[80%] lg:max-w-md px-5 py-3 rounded-2xl relative group shadow-sm ${isMyMessage ? 'bg-blue-600 text-white rounded-br-none' :
-                                    isAi ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-2 border-purple-200' :
+                                    isAi ? 'bg-linear-to-r from-purple-600 to-indigo-600 text-white border-2 border-purple-200' :
                                         msg._isFailed ? 'bg-red-50 text-red-800 border border-red-200 rounded-bl-none' :
                                             'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
                                     } ${msg.id.toString().startsWith('temp-') && !msg._isFailed ? 'opacity-75' : ''}`}>
@@ -504,7 +504,7 @@ const Chat = () => {
                                         📄
                                     </div>
                                 )}
-                                <div className="text-sm font-medium text-gray-700 truncate max-w-[200px]">{chatFile.name}</div>
+                                <div className="text-sm font-medium text-gray-700 truncate max-w-50">{chatFile.name}</div>
                             </div>
                             <button type="button" onClick={clearChatFile} className="text-red-500 hover:bg-red-50 p-1 rounded-full">
                                 ✕
