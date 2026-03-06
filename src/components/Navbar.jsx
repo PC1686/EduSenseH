@@ -25,16 +25,16 @@ function Navbar({ children }) {
           <Link to={`/group/${currentGroupId}`} className="no-underline flex items-center gap-2">
             <span className="text-3xl">🎓</span>
             <div className="flex flex-col">
-              <h1 className="text-xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent m-0">EduSense StudySphere AI</h1>
+              <h1 className="text-xl font-bold bg-linear-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent m-0">EduSense StudySphere AI</h1>
               <span className="text-[10px] text-gray-500 font-medium tracking-wider uppercase">Intelligent Group Learning</span>
             </div>
           </Link>
         </div>
-        <div className="flex-[2] flex justify-center gap-4">
+        <div className="flex-2 flex justify-center gap-4">
           <Link
             to={`/group/${currentGroupId}`}
             className={`no-underline font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 flex items-center gap-2 ${location.pathname === `/group/${currentGroupId}`
-              ? 'text-white bg-gradient-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
+              ? 'text-white bg-linear-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
               : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
               }`}
           >
@@ -43,7 +43,7 @@ function Navbar({ children }) {
           <Link
             to={`/ArchiveClass/${currentGroupId}`}
             className={`no-underline font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 flex items-center gap-2 ${location.pathname === `/ArchiveClass/${currentGroupId}`
-              ? 'text-white bg-gradient-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
+              ? 'text-white bg-linear-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
               : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
               }`}
           >
@@ -52,7 +52,7 @@ function Navbar({ children }) {
           <Link
             to={`/chat/${currentGroupId}`}
             className={`no-underline font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 flex items-center gap-2 ${location.pathname === `/chat/${currentGroupId}`
-              ? 'text-white bg-gradient-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
+              ? 'text-white bg-linear-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
               : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
               }`}
           >
@@ -61,7 +61,7 @@ function Navbar({ children }) {
           <Link
             to={`/resources/${currentGroupId}`}
             className={`no-underline font-semibold px-5 py-2.5 rounded-xl transition-all duration-300 flex items-center gap-2 ${location.pathname === `/resources/${currentGroupId}`
-              ? 'text-white bg-gradient-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
+              ? 'text-white bg-linear-to-r from-blue-600 to-blue-500 shadow-md transform scale-105'
               : 'text-gray-500 hover:text-blue-600 hover:bg-blue-50'
               }`}
           >
@@ -70,11 +70,11 @@ function Navbar({ children }) {
         </div>
         <div className="flex-1 flex justify-end items-center gap-4">
           <div className="flex items-center gap-3 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-100">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
+            <div className="w-8 h-8 rounded-full bg-linear-to-tr from-blue-400 to-blue-600 flex items-center justify-center text-white font-bold text-sm">
               {userData?.email?.[0].toUpperCase()}
             </div>
             <div className="flex flex-col">
-              <span className="text-gray-700 text-xs font-semibold max-w-[120px] truncate">{userData?.email}</span>
+              <span className="text-gray-700 text-xs font-semibold max-w-30 truncate">{userData?.email}</span>
               <span className="text-[10px] text-blue-600 font-bold uppercase">{roleLabel}</span>
             </div>
           </div>

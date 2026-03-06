@@ -2,7 +2,7 @@ import React from 'react';
 
 const Layout = ({ children }) => {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-950 to-sky-900 text-slate-200">
+    <div className="min-h-screen bg-linear-to-br from-slate-900 via-slate-950 to-sky-900 text-slate-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         <header className="mb-4 flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
