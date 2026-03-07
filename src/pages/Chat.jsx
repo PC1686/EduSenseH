@@ -20,6 +20,13 @@ const Chat = () => {
     const channelRef = useRef(null);
     const typingTimeoutRef = useRef({});
 
+    // Poll State
+    const [activePoll, setActivePoll] = useState(null);
+    const [pollResponses, setPollResponses] = useState([]);
+    const [showPollModal, setShowPollModal] = useState(false);
+    const [pollQuestion, setPollQuestion] = useState('');
+    const [pollOptions, setPollOptions] = useState(['', '']);
+
 
     const messagesEndRef = useRef(null);
     const fileInputRef = useRef(null);
@@ -88,6 +95,13 @@ const Chat = () => {
                     }
                     return filtered;
                 });
+            })
+            .on('broadcast', { event: 'poll_launched' }, (payload) => {
+                setActivePoll(payload.payload);
+                setPollResponses([]);
+            })
+            .on('broadcast', { event: 'poll_response' }, (payload) => {
+                setPollResponses((prev) => [...prev, payload.payload]);
             })
             // Postgres changes as backup
             .on(
@@ -358,6 +372,75 @@ const Chat = () => {
         }, 2000);
     };
 
+    // Poll Handlers
+    const addPollOption = () => {
+        if (pollOptions.length < 5) {
+            setPollOptions([...pollOptions, '']);
+        }
+    };
+
+    const removePollOption = (index) => {
+        if (pollOptions.length > 2) {
+            setPollOptions(pollOptions.filter((_, i) => i !== index));
+        }
+    };
+
+    const updatePollOption = (index, value) => {
+        const newOptions = [...pollOptions];
+        newOptions[index] = value;
+        setPollOptions(newOptions);
+    };
+
+    const launchPoll = () => {
+        if (!pollQuestion.trim() || pollOptions.some(opt => !opt.trim())) {
+            alert('Please fill in question and all options.');
+            return;
+        }
+
+        const pollData = {
+            id: `poll-${Date.now()}`,
+            question: pollQuestion.trim(),
+            options: pollOptions.map(opt => opt.trim()),
+            created_by: userData.id,
+            created_at: new Date().toISOString()
+        };
+
+        if (channelRef.current) {
+            channelRef.current.send({
+                type: 'broadcast',
+                event: 'poll_launched',
+                payload: pollData
+            });
+            setActivePoll(pollData);
+            setPollResponses([]);
+            setShowPollModal(false);
+            setPollQuestion('');
+            setPollOptions(['', '']);
+        }
+    };
+
+    const respondPoll = (optionIndex) => {
+        if (!activePoll || !channelRef.current) return;
+
+        const response = {
+            pollId: activePoll.id,
+            optionIndex,
+            userId: userData.id,
+            userName: userData.name || userData.email
+        };
+
+        channelRef.current.send({
+            type: 'broadcast',
+            event: 'poll_response',
+            payload: response
+        });
+
+        // Local feedback: hide poll after responding if not teacher
+        if (userData.role !== 'teacher') {
+            setActivePoll(null);
+        }
+    };
+
     // Removed unused triggerAiTutor
 
     if (!groupId) {
@@ -365,26 +448,36 @@ const Chat = () => {
     }
 
     return (
-        <div className="flex h-[calc(100vh-80px)] bg-slate-100 p-4 gap-4">
+        <div className="flex h-[calc(100vh-80px)] bg-slate-100 p-2 sm:p-4 gap-4">
             {/* Main Chat Area */}
             <div className="flex-1 bg-white rounded-2xl shadow-md flex flex-col overflow-hidden border border-gray-100 relative">
-                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+                <div className="p-3 sm:p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
                     <div>
-                        <h3 className="text-lg font-bold text-gray-800 m-0">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-800 m-0">
                             {group ? `${group.name} - Group Chat` : 'Group Chat'}
                         </h3>
-                        <p className="text-xs text-gray-500 m-0">Collaborate with your peers</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500 m-0">Collaborate with your peers</p>
                     </div>
 
-                    <div className="flex items-center gap-2">
-                        <div className={`w-2 h-2 rounded-full ${realtimeEnabled ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
-                        <span className="text-xs text-gray-500 font-medium">
-                            {realtimeEnabled ? 'Live' : 'Connecting...'}
-                        </span>
+                    <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end">
+                        {userData?.role === 'teacher' && (
+                            <button
+                                onClick={() => setShowPollModal(true)}
+                                className="px-3 py-1.5 sm:px-4 sm:py-2 bg-indigo-100 text-indigo-700 rounded-lg text-[10px] sm:text-xs font-bold hover:bg-indigo-200 transition-colors flex items-center gap-2"
+                            >
+                                📊 Poll
+                            </button>
+                        )}
+                        <div className="flex items-center gap-2">
+                            <div className={`w-2 h-2 rounded-full ${realtimeEnabled ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
+                            <span className="text-[10px] sm:text-xs text-gray-500 font-medium">
+                                {realtimeEnabled ? 'Live' : 'Connecting...'}
+                            </span>
+                        </div>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
                     {messages.length === 0 && (
                         <div className="text-center text-gray-400 mt-10">
                             <p>No messages yet. Start the conversation!</p>
@@ -420,7 +513,7 @@ const Chat = () => {
 
                         return (
                             <div key={msg.id} className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[80%] lg:max-w-md px-5 py-3 rounded-2xl relative group shadow-sm ${isMyMessage ? 'bg-blue-600 text-white rounded-br-none' :
+                                <div className={`max-w-[85%] sm:max-w-[80%] lg:max-w-md px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl relative group shadow-sm ${isMyMessage ? 'bg-blue-600 text-white rounded-br-none' :
                                     isAi ? 'bg-linear-to-r from-purple-600 to-indigo-600 text-white border-2 border-purple-200' :
                                         msg._isFailed ? 'bg-red-50 text-red-800 border border-red-200 rounded-bl-none' :
                                             'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
@@ -536,12 +629,142 @@ const Chat = () => {
                         <button
                             type="submit"
                             disabled={messageSending || (!newMessage.trim() && !chatFile)}
-                            className="bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 transition font-semibold disabled:opacity-50 shadow-md hover:shadow-lg hover:-translate-y-0.5"
+                            className="bg-blue-600 text-white px-4 sm:px-6 py-2 sm:py-3 rounded-xl hover:bg-blue-700 transition font-semibold disabled:opacity-50 shadow-md hover:shadow-lg hover:-translate-y-0.5 text-sm"
                         >
                             Send
                         </button>
                     </div>
                 </form>
+
+                {/* Active Poll Overlay */}
+                {activePoll && (
+                    <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 bg-white rounded-2xl shadow-2xl border border-indigo-100 p-6 animate-fade-in-down">
+                        <div className="flex justify-between items-start mb-4">
+                            <div>
+                                <h4 className="text-gray-900 font-bold m-0">{activePoll.question}</h4>
+                                <p className="text-[10px] text-gray-500 m-0 mt-1">
+                                    {userData?.role === 'teacher' ? 'Live Results' : 'Choose an answer'}
+                                </p>
+                            </div>
+                            <button onClick={() => setActivePoll(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                        </div>
+
+                        <div className="space-y-2">
+                            {activePoll.options.map((option, idx) => {
+                                const responseCount = pollResponses.filter(r => r.optionIndex === idx).length;
+                                const totalResponses = pollResponses.length;
+                                const percentage = totalResponses > 0 ? Math.round((responseCount / totalResponses) * 100) : 0;
+
+                                return (
+                                    <div key={idx} className="relative">
+                                        {userData?.role === 'teacher' ? (
+                                            <div className="w-full p-3 rounded-xl bg-gray-50 border border-gray-100 overflow-hidden">
+                                                <div
+                                                    className="absolute inset-0 bg-indigo-50 transition-all duration-500"
+                                                    style={{ width: `${percentage}%` }}
+                                                />
+                                                <div className="relative flex justify-between items-center text-sm">
+                                                    <span className="font-medium text-gray-700">{option}</span>
+                                                    <span className="font-bold text-indigo-600">{percentage}% ({responseCount})</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <button
+                                                onClick={() => respondPoll(idx)}
+                                                className="w-full p-3 text-left rounded-xl bg-gray-50 border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-all text-sm font-medium text-gray-700"
+                                            >
+                                                {option}
+                                            </button>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+
+                        {userData?.role === 'teacher' && (
+                            <div className="mt-4 pt-4 border-t border-gray-50 flex justify-between items-center">
+                                <span className="text-xs text-gray-500">{pollResponses.length} total responses</span>
+                                <button
+                                    onClick={() => setActivePoll(null)}
+                                    className="text-xs font-bold text-red-500 hover:underline"
+                                >
+                                    Close Poll
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                )}
+
+                {/* Poll Creation Modal */}
+                {showPollModal && (
+                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                        <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl scale-in">
+                            <h3 className="text-2xl font-black text-gray-900 mb-6">Create a Poll</h3>
+
+                            <div className="space-y-6">
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Question</label>
+                                    <input
+                                        type="text"
+                                        value={pollQuestion}
+                                        onChange={(e) => setPollQuestion(e.target.value)}
+                                        placeholder="What do you want to ask?"
+                                        className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Options (Max 5)</label>
+                                    <div className="space-y-3">
+                                        {pollOptions.map((opt, idx) => (
+                                            <div key={idx} className="flex gap-2">
+                                                <input
+                                                    type="text"
+                                                    value={opt}
+                                                    onChange={(e) => updatePollOption(idx, e.target.value)}
+                                                    placeholder={`Option ${idx + 1}`}
+                                                    className="flex-1 p-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                                                />
+                                                {pollOptions.length > 2 && (
+                                                    <button
+                                                        onClick={() => removePollOption(idx)}
+                                                        className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+
+                                    {pollOptions.length < 5 && (
+                                        <button
+                                            onClick={addPollOption}
+                                            className="mt-3 text-xs font-bold text-indigo-600 hover:underline"
+                                        >
+                                            + Add Option
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 mt-8">
+                                <button
+                                    onClick={() => setShowPollModal(false)}
+                                    className="flex-1 py-4 bg-gray-100 text-gray-700 font-bold rounded-2xl hover:bg-gray-200 transition-all"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={launchPoll}
+                                    className="flex-1 py-4 bg-indigo-600 text-white font-bold rounded-2xl hover:bg-indigo-700 shadow-lg shadow-indigo-100 transition-all active:scale-95"
+                                >
+                                    Launch Poll
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

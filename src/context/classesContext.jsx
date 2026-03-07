@@ -17,14 +17,14 @@ export const ClassesProvider = ({ children }) => {
 
   const fetchClasses = useCallback(async (userId) => {
     if (!userId) return;
-    
+
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('classes')
         .select('*')
         .eq('user_id', userId);
-      
+
       if (error) throw error;
       setClasses(data || []);
     } catch (err) {
@@ -39,11 +39,11 @@ export const ClassesProvider = ({ children }) => {
     classes,
     loading,
     fetchClasses,
-  }), [ classes, loading,  fetchClasses]);
+  }), [classes, loading, fetchClasses]);
 
   return (
     <ClassesContext.Provider value={value}>
-      { children}
+      {children}
     </ClassesContext.Provider>
   );
 };

@@ -377,7 +377,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-50 h-screen ">
+    <div className="bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-50 min-h-screen">
       <div className="border-b border-slate-800/80 px-4 sm:px-8 py-4 flex items-center justify-between gap-3 bg-slate-950/80">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold tracking-tight">
