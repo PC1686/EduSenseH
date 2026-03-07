@@ -252,11 +252,11 @@ const ArchiveClass = () => {
     // removed duplicate fetchArchivedSessions
 
     return (
-        <div className="p-8 bg-slate-50 min-h-screen">
-            <div className="flex items-center justify-between mb-8 max-w-7xl mx-auto">
-                <div>
-                    <h1 className="text-3xl font-bold text-[#1976d2] mb-1">Class Archive & Intelligence</h1>
-                    <p className="text-gray-500">Revisit past lessons with AI-generated summaries and transcripts.</p>
+        <div className="p-4 sm:p-8 bg-slate-50 min-h-screen">
+            <div className="flex flex-col sm:flex-row items-center justify-between mb-8 max-w-7xl mx-auto gap-4">
+                <div className="text-center sm:text-left">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-[#1976d2] mb-1">Class Archive & Intelligence</h1>
+                    <p className="text-gray-500 text-sm sm:text-base">Revisit past lessons with AI-generated summaries and transcripts.</p>
                 </div>
             </div>
 
@@ -356,8 +356,8 @@ const ArchiveClass = () => {
 
             {/* Attendance Modal */}
             {attendanceOpen && attendanceSession && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
                         {/* Header */}
                         <div className="bg-linear-to-r from-[#1976d2] to-[#1565c0] p-5 rounded-t-2xl flex items-center justify-between shrink-0">
                             <div>
@@ -451,8 +451,8 @@ const ArchiveClass = () => {
             )}
             {/* Recording Player Modal */}
             {selectedRecording && recordingUrl && (
-                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-auto">
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-auto">
                         {/* Modal Header */}
                         <div className="sticky top-0 bg-linear-to-r from-[#1976d2] to-[#1565c0] p-6 flex items-center justify-between border-b border-blue-300">
                             <div>

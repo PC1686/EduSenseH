@@ -261,15 +261,15 @@ function Resources() {
     // flashcards generation not used in UI, removing to satisfy lint
 
     return (
-        <div className="flex-1 p-8 min-h-screen bg-slate-50">
-            <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl p-8 border border-gray-100">
-                <div className="flex justify-between items-center mb-8 pb-6 border-b border-gray-100">
-                    <div>
-                        <h2 className="m-0 text-[#1976d2] text-3xl font-bold">Smart Learning Resources</h2>
-                        <p className="text-gray-500 m-0 mt-1">Upload materials and let AI generate study aids.</p>
+        <div className="flex-1 p-3 sm:p-8 min-h-screen bg-slate-50">
+            <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl p-4 sm:p-8 border border-gray-100">
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-8 pb-6 border-b border-gray-100 gap-4">
+                    <div className="text-center sm:text-left">
+                        <h2 className="m-0 text-[#1976d2] text-2xl sm:text-3xl font-bold">Smart Learning Resources</h2>
+                        <p className="text-gray-500 m-0 mt-1 text-sm">Upload materials and let AI generate study aids.</p>
                     </div>
                     {role === 'teacher' && (
-                        <div>
+                        <div className="w-full sm:w-auto text-center sm:text-right">
                             <input
                                 type="file"
                                 ref={fileInputRef}
@@ -280,7 +280,7 @@ function Resources() {
                             <button
                                 onClick={() => fileInputRef.current?.click()}
                                 disabled={uploading}
-                                className="px-6 py-3 bg-[#1976d2] text-white border-none rounded-xl text-base font-bold cursor-pointer transition-colors hover:bg-[#1565c0] disabled:opacity-50 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
+                                className="w-full sm:w-auto px-6 py-3 bg-[#1976d2] text-white border-none rounded-xl text-base font-bold cursor-pointer transition-colors hover:bg-[#1565c0] disabled:opacity-50 shadow-lg hover:shadow-xl hover:-translate-y-0.5"
                             >
                                 {uploading ? 'Uploading...' : 'Upload Study Material'}
                             </button>
@@ -291,12 +291,12 @@ function Resources() {
                 {/* AI Workspace - Textarea and Generation Buttons */}
                 {role === 'student' && (
                     <div className="mb-10 bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
-                        <div className="flex justify-between items-center mb-4">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                             <h3 className="m-0 text-blue-800 text-lg font-bold flex items-center gap-2">
                                 <span>🧪</span> AI Workspace
                             </h3>
                             {role === 'student' && (
-                                <div className="flex gap-3 items-center">
+                                <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
                                     <button
                                         type="button"
                                         onClick={() => {
@@ -307,7 +307,7 @@ function Resources() {
                                             setAiError(null);
                                         }}
                                         disabled={!!extractingFileId}
-                                        className="px-4 py-2 bg-white text-blue-700 rounded-lg font-bold text-sm border border-blue-200 hover:bg-blue-50 transition-all shadow-sm active:scale-95 disabled:opacity-50"
+                                        className="flex-1 sm:flex-none px-4 py-2 bg-white text-blue-700 rounded-lg font-bold text-xs border border-blue-200 hover:bg-blue-50 transition-all shadow-sm active:scale-95 disabled:opacity-50"
                                         title="Clear text"
                                     >
                                         Clear
@@ -315,16 +315,16 @@ function Resources() {
                                     <button
                                         onClick={handleGenerateSummary}
                                         disabled={loadingAI || !!extractingFileId}
-                                        className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold text-sm hover:bg-emerald-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                        className="flex-1 sm:flex-none px-4 sm:px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold text-[10px] sm:text-xs hover:bg-emerald-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
                                     >
-                                        ✨ Generate Summary
+                                        ✨ Summary
                                     </button>
                                     <button
                                         onClick={handleGenerateQuiz}
                                         disabled={loadingAI || !!extractingFileId}
-                                        className="px-6 py-2 bg-amber-500 text-white rounded-lg font-bold text-sm hover:bg-amber-600 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                                        className="flex-1 sm:flex-none px-4 sm:px-6 py-2 bg-amber-500 text-white rounded-lg font-bold text-[10px] sm:text-xs hover:bg-amber-600 transition-all shadow-md active:scale-95 disabled:opacity-50"
                                     >
-                                        ❓ Generate Quiz
+                                        ❓ Quiz
                                     </button>
                                 </div>
                             )}
@@ -349,8 +349,8 @@ function Resources() {
                 {(loadingAI || summary || quiz || flashcards || aiError) && (
                     <div className="mt-8 bg-linear-to-br from-slate-50 to-white rounded-2xl border border-blue-100 shadow-xl overflow-hidden animate-fade-in">
                         <div className="p-6 border-b border-blue-50 flex justify-between items-center bg-white/50 backdrop-blur-sm">
-                            <h3 className="m-0 text-[#1976d2] text-xl font-bold flex items-center gap-2">
-                                <span className="text-2xl">🤖</span> AI Tutor Activity Result
+                            <h3 className="m-0 text-[#1976d2] text-lg sm:text-xl font-bold flex items-center gap-2">
+                                <span className="text-xl">🤖</span> AI Tutor Result
                             </h3>
                             <button
                                 onClick={() => {
@@ -365,7 +365,7 @@ function Resources() {
                             </button>
                         </div>
 
-                        <div className="p-8">
+                        <div className="p-4 sm:p-8">
                             {loadingAI && (
                                 <div className="flex flex-col items-center justify-center py-16">
                                     <div className="relative">
@@ -395,7 +395,7 @@ function Resources() {
                                         <span className="bg-emerald-100 text-emerald-700 p-2 rounded-lg text-lg">📄</span>
                                         <h4 className="m-0 text-gray-800 text-xl font-bold">Document Summary</h4>
                                     </div>
-                                    <div className="bg-white p-8 rounded-2xl border border-gray-100 shadow-sm leading-relaxed text-gray-700 text-lg whitespace-pre-wrap">
+                                    <div className="bg-white p-4 sm:p-8 rounded-2xl border border-gray-100 shadow-sm leading-relaxed text-gray-700 text-sm sm:text-lg whitespace-pre-wrap">
                                         {summary}
                                     </div>
                                 </div>
@@ -447,7 +447,7 @@ function Resources() {
                                                                     className={`shrink-0 h-5 w-5 rounded-full border flex items-center justify-center transition text-xs font-semibold ${isSelected ? 'bg-sky-600 border-sky-600 text-white' : 'bg-white border-gray-300 text-gray-600'
                                                                         }`}
                                                                 >
-                                                                     {String.fromCharCode(65 + oIndex)}
+                                                                    {String.fromCharCode(65 + oIndex)}
                                                                 </span>
 
                                                                 <span className="flex-1">{option}</span>
@@ -520,9 +520,11 @@ function Resources() {
                                     >
                                         <div className="flex items-center gap-4 flex-1 mb-4 sm:mb-0">
                                             <div className="text-4xl p-2 bg-blue-50 rounded-lg">📄</div>
-                                            <div className="flex-1">
-                                                <div className="font-bold text-gray-800 text-lg mb-1 group-hover:text-[#1976d2] transition-colors">{file.name}</div>
-                                                <div className="text-xs text-gray-500 uppercase tracking-wide">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="font-bold text-gray-800 text-base sm:text-lg mb-1 group-hover:text-[#1976d2] transition-colors break-words">
+                                                    {file.name}
+                                                </div>
+                                                <div className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wide truncate">
                                                     By {file.uploadedByName || 'Unknown'} • {new Date(file.uploadedAt).toLocaleDateString()}
                                                 </div>
                                             </div>
