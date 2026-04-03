@@ -343,6 +343,7 @@ function Resources() {
                                 </div>
                             )}
                         </div>
+                    </div>
                         <div className="mb-3 text-xs text-blue-600 dark:text-blue-200 bg-blue-100/50 dark:bg-blue-950/20 p-2 rounded-lg">
                             💡 <strong>Supported files:</strong> PDF, DOCX, DOC, TXT, RTF, ODT, PPT, PPTX, XLS, XLSX, MP3, WAV, M4A, AAC, OGG • Click "Use for AI" to extract text automatically
                         </div>
@@ -357,7 +358,7 @@ function Resources() {
                             disabled={!!extractingFileId}
                         />
                     </div>
-                )
+                )}
 
                 {/* AI Results Section - Full Width Rectangle */}
                 {(loadingAI || summary || quiz || flashcards || aiError) && (
@@ -577,7 +578,6 @@ function Resources() {
                             </div>
                         )}
                     </div>
-                </div>
                 </div>
             </div>
         </div>

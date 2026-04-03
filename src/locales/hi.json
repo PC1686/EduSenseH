@@ -223,5 +223,23 @@
     "english": "English",
     "hindi": "हिन्दी",
     "marathi": "मराठी"
+  },
+  "quiz": {
+    "title": "AI ज्ञान प्रश्नोत्तरी",
+    "completed": "प्रश्नोत्तरी पूरी हुई!",
+    "perfectScore": "पूर्ण अंक! 🏆",
+    "goodJob": "बहुत बढ़िया! 👍",
+    "keepLearning": "सीखते रहें! 📚",
+    "submitAnswers": "उत्तर जमा करें",
+    "topScholars": "शीर्ष विद्वान",
+    "noOneTaken": "अभी तक किसी ने यह प्रश्नोत्तरी नहीं ली है।",
+    "beTheFirst": "शीर्ष स्थान प्राप्त करने वाले पहले व्यक्ति बनें!",
+    "score": "अंक",
+    "questionsAsked": "पूछे गए प्रश्न",
+    "takeAIQuiz": "AI प्रश्नोत्तरी लें",
+    "viewResults": "परिणाम देखें",
+    "prepQuiz": "प्रश्नोत्तरी तैयार करें",
+    "generating": "बन रहा है...",
+    "viewTopScores": "शीर्ष स्कोर लीडरबोर्ड देखें"
   }
 }

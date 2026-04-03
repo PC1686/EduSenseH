@@ -47,8 +47,8 @@ const LANGUAGE_CONFIGS = {
 };
 
 // Get current language configuration
-function getCurrentLanguageConfig() {
-    const currentLang = i18n.language || 'en';
+function getCurrentLanguageConfig(targetLang = null) {
+    const currentLang = (targetLang || i18n.language || 'en').split('-')[0];
     return LANGUAGE_CONFIGS[currentLang] || LANGUAGE_CONFIGS.en;
 }
 
@@ -65,18 +65,20 @@ export const multilingualAIService = {
     generateSummary: async (text, targetLanguage = null) => {
         if (!text) return "No content to summarize.";
         
-        const config = targetLanguage ? LANGUAGE_CONFIGS[targetLanguage] : getCurrentLanguageConfig();
+        const config = getCurrentLanguageConfig(targetLanguage);
         
         try {
             const completion = await groq.chat.completions.create({
                 messages: [
                     {
                         role: "system",
-                        content: `${config.systemPrompt} ${config.summaryPrompt}`
+                        content: `${config.systemPrompt} 
+                        ${config.summaryPrompt}
+                        IMPORTANT: You MUST write the summary in ${config.name} ONLY.`
                     },
                     {
                         role: "user",
-                        content: text
+                        content: `Summarize this text in ${config.name}: ${text}`
                     }
                 ],
                 model: "llama-3.3-70b-versatile",
@@ -92,31 +94,36 @@ export const multilingualAIService = {
 
     // 2. Generate Quiz in multiple languages
     generateQuiz: async (text, targetLanguage = null) => {
-        const config = targetLanguage ? LANGUAGE_CONFIGS[targetLanguage] : getCurrentLanguageConfig();
+        const config = getCurrentLanguageConfig(targetLanguage);
         
         try {
             const completion = await groq.chat.completions.create({
                 messages: [
                     {
                         role: "system",
-                        content: `${config.systemPrompt} ${config.quizPrompt}
-                        Return ONLY a valid JSON array of objects with this exact structure:
-                        [
-                          {
-                            "question": "Question text here?",
-                            "options": ["Option A", "Option B", "Option C", "Option D"],
-                            "correctAnswer": 0
-                          }
-                        ]
+                        content: `${config.systemPrompt} 
+                        ${config.quizPrompt}
+                        IMPORTANT: You MUST generate EXACTLY 3 questions.
+                        IMPORTANT: You MUST generate the questions, options, and explanations in ${config.name} ONLY.
+                        Return ONLY a valid JSON object with this exact structure:
+                        {
+                          "quiz": [
+                            {
+                              "question": "Question text here in ${config.name}?",
+                              "options": ["Option A in ${config.name}", "Option B in ${config.name}", "Option C in ${config.name}", "Option D in ${config.name}"],
+                              "correctAnswer": 0
+                            }
+                          ]
+                        }
                         Where correctAnswer is the index (0-3) of the correct option.`
                     },
                     {
                         role: "user",
-                        content: text
+                        content: `Generate exactly 3 multiple-choice questions in ${config.name} based on this text:\n\n${text}`
                     }
                 ],
                 model: "llama-3.3-70b-versatile",
-                temperature: 0.3,
+                temperature: 0.2, // Lower temperature for more consistent language adherence
                 response_format: { type: "json_object" }
             });
 
@@ -129,7 +136,7 @@ export const multilingualAIService = {
                     question: q.question || q.q,
                     options: q.options || [],
                     correctAnswer: typeof q.correctAnswer === 'number' ? q.correctAnswer : 0
-                }));
+                })).slice(0, 3);
             } catch {
                 return [];
             }
@@ -141,7 +148,7 @@ export const multilingualAIService = {
 
     // 3. AI Tutor Chat Response in multiple languages
     getTutorResponse: async (context, userQuestion, targetLanguage = null) => {
-        const config = targetLanguage ? LANGUAGE_CONFIGS[targetLanguage] : getCurrentLanguageConfig();
+        const config = getCurrentLanguageConfig(targetLanguage);
         
         try {
             const completion = await groq.chat.completions.create({
@@ -172,7 +179,7 @@ export const multilingualAIService = {
     transcribeAudio: async (audioUrl, targetLanguage = null) => {
         if (!audioUrl) return "";
         
-        const config = targetLanguage ? LANGUAGE_CONFIGS[targetLanguage] : getCurrentLanguageConfig();
+        const config = getCurrentLanguageConfig(targetLanguage);
         
         try {
             const transcript = await aai.transcripts.transcribe({
@@ -190,7 +197,7 @@ export const multilingualAIService = {
 
     // 5. Generate Flashcards in multiple languages
     generateFlashcards: async (text, targetLanguage = null) => {
-        const config = targetLanguage ? LANGUAGE_CONFIGS[targetLanguage] : getCurrentLanguageConfig();
+        const config = getCurrentLanguageConfig(targetLanguage);
         
         try {
             const completion = await groq.chat.completions.create({
@@ -231,7 +238,7 @@ export const multilingualAIService = {
 
     // 6. Language-specific educational insights
     generateEducationalInsights: async (transcript, confusionLevel, targetLanguage = null) => {
-        const config = targetLanguage ? LANGUAGE_CONFIGS[targetLanguage] : getCurrentLanguageConfig();
+        const config = getCurrentLanguageConfig(targetLanguage);
         
         try {
             const completion = await groq.chat.completions.create({

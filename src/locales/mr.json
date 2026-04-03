@@ -223,5 +223,23 @@
     "english": "English",
     "hindi": "हिन्दी",
     "marathi": "मराठी"
+  },
+  "quiz": {
+    "title": "AI ज्ञान प्रश्नमंजुषा",
+    "completed": "प्रश्नमंजुषा पूर्ण झाली!",
+    "perfectScore": "परिपूर्ण गुण! 🏆",
+    "goodJob": "उत्तम काम! 👍",
+    "keepLearning": "शिकत राहा! 📚",
+    "submitAnswers": "उत्तरे सबमिट करा",
+    "topScholars": "अव्वल विद्यार्थी",
+    "noOneTaken": "अद्याप कोणीही ही प्रश्नमंजुषा सोडवली नाही.",
+    "beTheFirst": "प्रथम क्रमांक मिळवणारे पहिले व्हा!",
+    "score": "गुण",
+    "questionsAsked": "विचारलेले प्रश्न",
+    "takeAIQuiz": "AI प्रश्नमंजुषा सोडवा",
+    "viewResults": "निकाल पहा",
+    "prepQuiz": "प्रश्नमंजुषा तयार करा",
+    "generating": "तयार होत आहे...",
+    "viewTopScores": "अव्वल गुणांचे लीडरबोर्ड पहा"
   }
 }

@@ -4,11 +4,12 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useTranslation } from 'react-i18next';
+import { aiService } from '../lib/ai';
 
 const ArchiveClass = () => {
     const { groupId } = useParams();
     const { userData } = useAuth();
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedRecording, setSelectedRecording] = useState(null);
@@ -19,6 +20,22 @@ const ArchiveClass = () => {
     const [attendanceList, setAttendanceList] = useState([]);
     const [loadingAttendance, setLoadingAttendance] = useState(false);
     const [attendanceSession, setAttendanceSession] = useState(null);
+
+    // -- AI Quiz States --
+    const [quizDataMap, setQuizDataMap] = useState({}); 
+    const [quizAttemptMap, setQuizAttemptMap] = useState({});
+    const [showQuizModal, setShowQuizModal] = useState(false);
+    const [activeQuizSession, setActiveQuizSession] = useState(null);
+    const [generatingQuizId, setGeneratingQuizId] = useState(null);
+
+    const [currentQuiz, setCurrentQuiz] = useState([]);
+    const [quizAnswers, setQuizAnswers] = useState({});
+    const [quizSubmitted, setQuizSubmitted] = useState(false);
+    const [quizScore, setQuizScore] = useState(0);
+    const [attemptError, setAttemptError] = useState(null);
+
+    const [showLeaderboard, setShowLeaderboard] = useState(false);
+    const [leaderboardData, setLeaderboardData] = useState([]);
 
     const fetchArchivedSessions = useCallback(async () => {
         try {
@@ -219,8 +236,68 @@ const ArchiveClass = () => {
         return '—';
     };
 
+    const fetchQuizzesAndAttempts = useCallback(async () => {
+        if (!groupId) return;
+        try {
+            // Fetch quizzes for this group
+            const { data: quizzesData, error: qError } = await supabase
+                .from('session_quizzes')
+                .select('*')
+                .eq('group_id', groupId);
+
+            if (qError) throw qError;
+
+            // Fetch attempt scores by group_id if possible, otherwise fetch all and filter in JS
+            // Since our goal is for this group, let's fetch all attempts for the group's sessions
+            const sessionIds = sessions.map(s => s.id);
+            let attemptsData = [];
+            
+            if (sessionIds.length > 0) {
+                const { data: aData, error: aError } = await supabase
+                    .from('quiz_attempts')
+                    .select('*')
+                    .in('session_id', sessionIds);
+                if (!aError && aData) {
+                    attemptsData = aData;
+                }
+            } else {
+                // FALLBACK: If sessions aren't loaded yet, try fetching all attempts for the group 
+                // by joining or simply waiting. For simplicity, we just fetch all to be absolute sure.
+                const { data: aData } = await supabase
+                    .from('quiz_attempts')
+                    .select('*');
+                if (aData) attemptsData = aData;
+            }
+            
+            const qData = {};
+            const qAttempts = {};
+
+            (quizzesData || []).forEach(row => {
+                const langKey = row.language || 'en';
+                qData[`${row.session_id}_${langKey}`] = row.quiz_data;
+            });
+
+            attemptsData.forEach(row => {
+                if (!qAttempts[row.session_id]) qAttempts[row.session_id] = [];
+                qAttempts[row.session_id].push({
+                    userId: row.user_id,
+                    userName: row.user_name || 'Anonymous',
+                    score: row.score,
+                    answers: row.answers || {},
+                    language: row.language || 'en'
+                });
+            });
+
+            setQuizDataMap(qData);
+            setQuizAttemptMap(qAttempts);
+        } catch(error) {
+            console.error('Error fetching quizzes:', error);
+        }
+    }, [groupId, sessions]);
+
     useEffect(() => {
         fetchArchivedSessions();
+        fetchQuizzesAndAttempts();
         if (!groupId) return;
         const channel = supabase
             .channel(`sessions:${groupId}`)
@@ -251,7 +328,142 @@ const ArchiveClass = () => {
         };
     }, [groupId, fetchArchivedSessions]);
 
-    // removed duplicate fetchArchivedSessions
+    // -- AI Quiz Actions --
+    const handleTakeQuiz = async (session) => {
+        const lang = (i18n.language || 'en').split('-')[0];
+        const quizKey = `${session.id}_${lang}`;
+        
+        setActiveQuizSession(session);
+        setAttemptError(null);
+        let quiz = quizDataMap[quizKey];
+        
+        if (!quiz) {
+            setGeneratingQuizId(session.id);
+            try {
+                // Generate quiz
+                const notes = session.description || session.title;
+                const generated = await aiService.generateQuiz(
+                    notes, 
+                    lang
+                );
+                const first3 = Array.isArray(generated) ? generated.slice(0, 3) : [];
+                quiz = first3;
+
+                // Save to dedicated table
+                await supabase.from('session_quizzes').insert({
+                    session_id: session.id,
+                    group_id: groupId,
+                    quiz_data: quiz,
+                    created_by: userData.id,
+                    language: lang
+                });
+                setQuizDataMap(prev => ({...prev, [quizKey]: quiz}));
+            } catch (err) {
+                console.error("Quiz gen error", err);
+                setAttemptError("Failed to generate quiz. " + err.message);
+                setGeneratingQuizId(null);
+                return;
+            }
+            setGeneratingQuizId(null);
+        }
+
+        setCurrentQuiz(quiz);
+        setQuizAnswers({});
+        setQuizSubmitted(false);
+        
+        // Check if I already attempted this specific session (any language)
+        const attempts = quizAttemptMap[session.id] || [];
+        const myAttempt = attempts.find(a => a.userId === userData.id);
+        if (myAttempt) {
+            setQuizAnswers(myAttempt.answers || {});
+            setQuizScore(myAttempt.score || 0);
+            setQuizSubmitted(true);
+        }
+        
+        setShowQuizModal(true);
+    };
+
+    const handleQuizOptionSelect = (qIndex, oIndex) => {
+        if (quizSubmitted) return;
+        setQuizAnswers(prev => ({ ...prev, [qIndex]: oIndex }));
+    };
+
+    const submitQuizAttempt = async () => {
+        if (!currentQuiz || currentQuiz.length === 0) return;
+        let score = 0;
+        currentQuiz.forEach((q, idx) => {
+            if (quizAnswers[idx] === q.correctAnswer) score++;
+        });
+        
+        setQuizScore(score);
+        setQuizSubmitted(true);
+
+        const lang = (i18n.language || 'en').split('-')[0];
+
+        if (!userData || !userData.id) {
+            setAttemptError("You must be logged in to save your score.");
+            return;
+        }
+
+        try {
+            const { error: insertError } = await supabase.from('quiz_attempts').insert({
+                session_id: activeQuizSession.id,
+                user_id: userData.id,
+                user_name: userData.name || userData.email,
+                score: score,
+                answers: quizAnswers,
+                language: lang
+            });
+
+            if (insertError) throw insertError;
+
+            // update local state
+            setQuizAttemptMap(prev => {
+                const current = prev[activeQuizSession.id] || [];
+                return {
+                    ...prev,
+                    [activeQuizSession.id]: [...current, {
+                        userId: userData.id,
+                        userName: userData.name || userData.email,
+                        score: score,
+                        answers: quizAnswers,
+                        language: lang
+                    }]
+                };
+            });
+        } catch (err) {
+            console.error("Attempt save error:", err);
+            
+            // Check specifically for the duplicate key constraint violation (code 23505)
+            if (err.code === '23505') {
+                setAttemptError("You have already submitted a score for this session. Switching to your results.");
+                // Give them their score back from the existing map
+                const attempts = quizAttemptMap[activeQuizSession.id] || [];
+                const myAttempt = attempts.find(a => a.userId === userData.id);
+                if (myAttempt) {
+                    setQuizScore(myAttempt.score);
+                    setQuizAnswers(myAttempt.answers);
+                }
+                setQuizSubmitted(true);
+                return;
+            }
+
+            const errorMessage = err.message || "Unknown database error";
+            setAttemptError(`Failed to save score: ${errorMessage}`);
+            setQuizSubmitted(false); 
+        }
+    };
+
+    const handleShowLeaderboard = (session) => {
+        const attempts = quizAttemptMap[session.id] || [];
+        // sort by score descending
+        const sorted = [...attempts].sort((a, b) => b.score - a.score).slice(0, 3);
+        setLeaderboardData(sorted);
+        setActiveQuizSession(session);
+        setShowLeaderboard(true);
+        setCurrentQuiz(quizDataMap[session.id] || []);
+    };
+
 
     return (
         <div className="p-4 sm:p-8 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-50 transition-colors">
@@ -313,6 +525,35 @@ const ArchiveClass = () => {
                                     </div>
 
                                     <div className="flex flex-col gap-2">
+                                        {/* New Quiz Buttons */}
+                                        <div className='flex gap-2 mb-2'>
+                                            {userData?.role === 'student' ? (
+                                                <button
+                                                    onClick={() => handleTakeQuiz(session)}
+                                                    disabled={generatingQuizId === session.id}
+                                                    className="flex-1 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl text-sm font-bold shadow-lg hover:shadow-indigo-500/30 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {generatingQuizId === session.id ? t('quiz.generating') 
+                                                    : (quizAttemptMap[session.id]?.some(a => a.userId === userData.id) ? `📝 ${t('quiz.viewResults')}` : `✨ ${t('quiz.takeAIQuiz')}`)}
+                                                </button>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handleTakeQuiz(session)}
+                                                    disabled={generatingQuizId === session.id}
+                                                    className="flex-1 py-2 bg-gradient-to-r from-indigo-500 to-purple-600 text-white rounded-xl text-sm font-bold shadow-lg hover:shadow-indigo-500/30 transition-all active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                                                >
+                                                    {generatingQuizId === session.id ? t('quiz.generating') : `✨ ${t('quiz.prepQuiz')}`}
+                                                </button>
+                                            )}
+                                            
+                                            <button 
+                                                onClick={() => handleShowLeaderboard(session)}
+                                                className="px-4 py-2 bg-amber-100 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-200 dark:hover:bg-amber-900/50 rounded-xl font-bold shadow-sm transition-all active:scale-95 group/leader"
+                                                title={t('quiz.viewTopScores')}
+                                            >
+                                                <span className="group-hover/leader:animate-bounce block text-lg">🏆</span>
+                                            </button>
+                                        </div>
                                         {session.recording_path ? (
                                             <button
                                                 onClick={() => handlePlayRecording(session)}
@@ -538,6 +779,159 @@ const ArchiveClass = () => {
                                     </button>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* AI Quiz Modal */}
+            {showQuizModal && activeQuizSession && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-up border border-indigo-100 dark:border-indigo-900/30">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white shrink-0">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-2xl font-black mb-1">✨ {t('quiz.title')}</h2>
+                                    <p className="text-indigo-100 text-sm font-medium">{activeQuizSession.title}</p>
+                                </div>
+                                <button onClick={() => setShowQuizModal(false)} className="bg-white/20 hover:bg-white/30 rounded-full w-8 h-8 flex items-center justify-center transition-colors">✕</button>
+                            </div>
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 overflow-auto p-6 md:p-8 space-y-8 bg-slate-50 dark:bg-slate-950">
+                            {attemptError && (
+                                <div className="bg-red-50 text-red-600 p-4 rounded-xl text-sm font-bold border border-red-200">
+                                    {attemptError}
+                                </div>
+                            )}
+
+                            {quizSubmitted && (
+                                <div className="text-center p-6 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 rounded-2xl border border-indigo-100 dark:border-indigo-800 shadow-sm mb-6">
+                                    <h3 className="text-xl font-bold text-gray-800 dark:text-slate-100 mb-2">{t('quiz.completed')}</h3>
+                                    <div className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-purple-600 my-4">
+                                        {quizScore} / {currentQuiz.length}
+                                    </div>
+                                    <p className="text-gray-500 dark:text-slate-400 font-medium tracking-wide">
+                                        {quizScore === currentQuiz.length ? t('quiz.perfectScore') : quizScore > 0 ? t('quiz.goodJob') : t('quiz.keepLearning')}
+                                    </p>
+                                </div>
+                            )}
+
+                            {currentQuiz.map((q, qIndex) => (
+                                <div key={qIndex} className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-sm border border-gray-100 dark:border-slate-800">
+                                    <h4 className="text-lg font-bold text-gray-800 dark:text-slate-100 mb-4">{qIndex + 1}. {q.question}</h4>
+                                    <div className="space-y-3">
+                                        {q.options.map((opt, oIndex) => {
+                                            const isSelected = quizAnswers[qIndex] === oIndex;
+                                            const isCorrect = q.correctAnswer === oIndex;
+                                            const showCorrectness = quizSubmitted;
+                                            
+                                            let btnClass = "w-full text-left p-4 rounded-xl border-2 transition-all font-medium text-sm ";
+                                            
+                                            if (showCorrectness) {
+                                                if (isCorrect) btnClass += "border-green-500 bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-200";
+                                                else if (isSelected) btnClass += "border-red-500 bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200";
+                                                else btnClass += "border-gray-100 dark:border-slate-800 text-gray-400 dark:text-slate-500 opacity-50";
+                                            } else {
+                                                if (isSelected) btnClass += "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 shadow-inner";
+                                                else btnClass += "border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:border-indigo-300 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer";
+                                            }
+
+                                            return (
+                                                <button 
+                                                    key={oIndex}
+                                                    disabled={quizSubmitted}
+                                                    onClick={() => handleQuizOptionSelect(qIndex, oIndex)}
+                                                    className={btnClass}
+                                                >
+                                                    <div className="flex items-center justify-between">
+                                                        <span>{opt}</span>
+                                                        {showCorrectness && isCorrect && <span className="text-xl">✅</span>}
+                                                        {showCorrectness && isSelected && !isCorrect && <span className="text-xl">❌</span>}
+                                                    </div>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Footer */}
+                        {!quizSubmitted && (
+                            <div className="p-6 bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 shrink-0">
+                                <button
+                                    onClick={submitQuizAttempt}
+                                    disabled={Object.keys(quizAnswers).length !== currentQuiz.length}
+                                    className="w-full py-4 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-bold text-lg shadow-lg hover:shadow-indigo-500/40 transition-transform active:scale-[0.98] disabled:opacity-50 disabled:active:scale-100"
+                                >
+                                    {t('quiz.submitAnswers')}
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* Leaderboard Modal */}
+            {showLeaderboard && activeQuizSession && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden animate-fade-in-down border border-amber-200 dark:border-amber-900/30">
+                        {/* Header */}
+                        <div className="bg-gradient-to-br from-amber-400 to-orange-500 p-6 text-white shrink-0 relative overflow-hidden">
+                            <div className="absolute top-0 right-0 opacity-20 text-8xl -mt-4 -mr-4 transform rotate-12">🏆</div>
+                            <div className="relative z-10 flex justify-between items-start">
+                                <div>
+                                    <h2 className="text-2xl font-black mb-1 drop-shadow-md">{t('quiz.topScholars')}</h2>
+                                    <p className="text-amber-50 font-medium drop-shadow-sm">{activeQuizSession.title}</p>
+                                </div>
+                                <button onClick={() => setShowLeaderboard(false)} className="bg-white/20 hover:bg-white/30 rounded-full w-8 h-8 flex items-center justify-center transition-colors">✕</button>
+                            </div>
+                        </div>
+
+                        {/* Body */}
+                        <div className="flex-1 overflow-auto p-6 md:p-8 bg-slate-50 dark:bg-slate-950">
+                            {leaderboardData.length === 0 ? (
+                                <div className="text-center py-10 opacity-70">
+                                    <div className="text-6xl mb-4">🤫</div>
+                                    <p className="text-gray-500 dark:text-slate-400 font-bold">{t('quiz.noOneTaken')}</p>
+                                    <p className="text-sm text-gray-400 mt-2">{t('quiz.beTheFirst')}</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-4 relative">
+                                    {leaderboardData.map((attempt, idx) => (
+                                        <div key={idx} className={`relative flex items-center gap-4 p-5 rounded-2xl border bg-white dark:bg-slate-900 shadow-sm transform transition-transform hover:scale-[1.02] ${idx === 0 ? 'border-amber-400 ring-2 ring-amber-400/20 z-10' : idx === 1 ? 'border-gray-300 dark:border-gray-600' : 'border-amber-700/30 border-amber-700'}`}>
+                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-xl font-black shadow-inner shrink-0 ${idx === 0 ? 'bg-gradient-to-br from-amber-200 to-amber-500 text-amber-900' : idx === 1 ? 'bg-gradient-to-br from-gray-200 to-gray-400 text-gray-800' : 'bg-gradient-to-br from-orange-200 to-orange-400 text-orange-900'}`}>
+                                                {idx === 0 ? '🥇' : idx === 1 ? '🥈' : '🥉'}
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="font-bold text-lg text-gray-800 dark:text-slate-100 truncate">{attempt.userName}</h4>
+                                                <p className="text-xs text-gray-500 dark:text-slate-400 uppercase tracking-wider font-semibold">{t('quiz.score')}: {attempt.score}</p>
+                                            </div>
+                                            <div className="text-2xl font-black text-gray-200 dark:text-slate-800">
+                                                #{idx + 1}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* View Questions (Teacher only) */}
+                            {userData?.role === 'teacher' && currentQuiz.length > 0 && (
+                                <div className="mt-10 pt-6 border-t border-gray-200 dark:border-slate-800">
+                                    <h3 className="font-bold text-gray-700 dark:text-slate-300 mb-4 uppercase text-xs tracking-widest">{t('quiz.questionsAsked')}</h3>
+                                    <div className="space-y-4">
+                                        {currentQuiz.map((q, idx) => (
+                                            <div key={idx} className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-gray-100 dark:border-slate-800 text-sm">
+                                                <p className="font-semibold text-gray-800 dark:text-slate-200 mb-2">Q{idx+1}: {q.question}</p>
+                                                <p className="text-green-600 dark:text-green-400 font-medium">✅ {q.options[q.correctAnswer]}</p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

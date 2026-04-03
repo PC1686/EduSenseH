@@ -223,5 +223,23 @@
     "english": "English",
     "hindi": "हिन्दी",
     "marathi": "मराठी"
+  },
+  "quiz": {
+    "title": "AI Knowledge Quiz",
+    "completed": "Quiz Completed!",
+    "perfectScore": "Perfect Score! 🏆",
+    "goodJob": "Good Job! 👍",
+    "keepLearning": "Keep learning! 📚",
+    "submitAnswers": "Submit Answers",
+    "topScholars": "Top Scholars",
+    "noOneTaken": "No one has taken this quiz yet.",
+    "beTheFirst": "Be the first to secure the top spot!",
+    "score": "Score",
+    "questionsAsked": "Questions Asked",
+    "takeAIQuiz": "Take AI Quiz",
+    "viewResults": "View Results",
+    "prepQuiz": "Prep Quiz",
+    "generating": "Generating...",
+    "viewTopScores": "View Top Scores Leaderboard"
   }
 }
