@@ -1,13 +1,19 @@
 // [HACKATHON TIMELINE] STEP 6 (Hour 8) - Dashboard Hub & Group Creation
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { Moon, Sun } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+import { useTheme } from '../context/ThemeContext';
+import { useTranslation } from 'react-i18next';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 
 const Dashboard = () => {
   /* Removed unnecessary line, previous edit might have already fixed this or context provides userData */
   const { userData, logout } = useAuth();
   const navigate = useNavigate();
+  const { isDark, toggleTheme } = useTheme();
+  const { t } = useTranslation();
   const handleLogout = async () => {
     try {
       await logout();
@@ -377,19 +383,31 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 text-slate-50 min-h-screen">
-      <div className="border-b border-slate-800/80 px-4 sm:px-8 py-4 flex items-center justify-between gap-3 bg-slate-950/80">
+    <div className="bg-slate-50 dark:bg-gradient-to-br dark:from-slate-950 dark:via-slate-900 dark:to-slate-950 text-slate-900 dark:text-slate-50 min-h-screen transition-colors">
+      <div className="border-b border-slate-200 dark:border-slate-800/80 px-4 sm:px-8 py-4 flex items-center justify-between gap-3 bg-white/80 dark:bg-slate-950/80 backdrop-blur">
         <div>
           <h2 className="text-lg sm:text-xl font-semibold tracking-tight">
-            Dashboard
+            {t('dashboard.title')}
           </h2>
-          <p className="text-xs text-slate-400">
-            Welcome back, {userData.name}. Organize your classes and sessions.
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            {t('dashboard.welcome')}, {userData.name}. Organize your classes and sessions.
           </p>
         </div>
         <div className="flex items-center gap-3 text-xs sm:text-sm">
-          <span className="px-3 py-1 rounded-full bg-slate-800 text-slate-200 border border-slate-700">
-            Role: <span className="font-semibold capitalize">{userData?.role}</span>
+          <LanguageSwitcher />
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className="w-9 h-9 hidden sm:flex items-center justify-center rounded-full bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors border border-gray-200 dark:border-slate-700 cursor-pointer"
+            title={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+          >
+            {isDark ? <Sun size={16} /> : <Moon size={16} />}
+          </button>
+          <span className="px-3 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700">
+            Role:{' '}
+            <span className="font-semibold capitalize">
+              {userData?.role}
+            </span>
           </span>
           <button
             onClick={handleLogout}
@@ -403,16 +421,16 @@ const Dashboard = () => {
       <div className="px-4 sm:px-8 pb-8 pt-6 space-y-6">
         {/* Stats row */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
-          <div className="rounded-2xl bg-slate-900/70 border border-slate-800/80 px-4 py-3">
-            <p className="text-xs text-slate-400 mb-1">Your Groups</p>
-            <p className="text-2xl font-semibold text-slate-50">{groups.length}</p>
+          <div className="rounded-2xl bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 px-4 py-3 shadow-sm">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Your Groups</p>
+            <p className="text-2xl font-semibold text-slate-900 dark:text-slate-50">{groups.length}</p>
             <p className="text-[11px] text-slate-500 mt-1">
               Spaces where you collaborate with others.
             </p>
           </div>
-          <div className="rounded-2xl bg-slate-900/70 border border-slate-800/80 px-4 py-3">
-            <p className="text-xs text-slate-400 mb-1">Role</p>
-            <p className="text-lg font-semibold capitalize text-slate-50">
+          <div className="rounded-2xl bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 px-4 py-3 shadow-sm">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Role</p>
+            <p className="text-lg font-semibold capitalize text-slate-900 dark:text-slate-50">
               {userData?.role}
             </p>
             <p className="text-[11px] text-slate-500 mt-1">
@@ -421,9 +439,9 @@ const Dashboard = () => {
                 : 'Join groups, attend sessions, and use AI to revise.'}
             </p>
           </div>
-          <div className="rounded-2xl bg-slate-900/70 border border-slate-800/80 px-4 py-3">
-            <p className="text-xs text-slate-400 mb-1">Today</p>
-            <p className="text-lg font-semibold text-slate-50">
+          <div className="rounded-2xl bg-white dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800/80 px-4 py-3 shadow-sm">
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-1">Today</p>
+            <p className="text-lg font-semibold text-slate-900 dark:text-slate-50">
               {new Date().toLocaleDateString()}
             </p>
             <p className="text-[11px] text-slate-500 mt-1">
@@ -436,22 +454,22 @@ const Dashboard = () => {
           {userData?.role === 'teacher' && (
             <button
               onClick={() => setShowCreateModal(true)}
-              className="inline-flex items-center gap-2 bg-sky-500 text-white px-4 py-2 rounded-full hover:bg-sky-400 transition text-sm"
+              className="inline-flex items-center gap-2 bg-sky-500 text-white px-4 py-2 rounded-full hover:bg-sky-400 transition text-sm shadow-sm"
             >
               <span className="h-2 w-2 rounded-full bg-white" />
-              Create new group
+              {t('dashboard.createNewGroup')}
             </button>
           )}
           <button
             onClick={() => setShowJoinModal(true)}
-            className="inline-flex items-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-full hover:bg-emerald-400 transition text-sm"
+            className="inline-flex items-center gap-2 bg-emerald-500 text-white px-4 py-2 rounded-full hover:bg-emerald-400 transition text-sm shadow-sm"
           >
-            Join with group ID
+            {t('dashboard.joinGroup')}
           </button>
         </div>
 
         {error && (
-          <div className="bg-red-500/10 border border-red-500/50 text-red-100 px-4 py-3 rounded-xl mb-4 text-sm">
+          <div className="bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/50 text-red-700 dark:text-red-100 px-4 py-3 rounded-xl mb-4 text-sm">
             {error}
           </div>
         )}
@@ -467,33 +485,35 @@ const Dashboard = () => {
             {groups.map((group) => (
               <div
                 key={group.id}
-                className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 hover:border-sky-500/70 hover:shadow-[0_18px_35px_rgba(15,23,42,0.9)] transition cursor-pointer group"
+                className="bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 hover:border-sky-500/70 hover:shadow-[0_18px_35px_rgba(15,23,42,0.9)] transition cursor-pointer group"
               >
-                <h3 className="text-lg font-semibold text-slate-50 mb-1">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-50 mb-1">
                   {group.name}
                 </h3>
-                <p className="text-xs text-slate-400 mb-3">
-                  {group.description || 'No description yet. Add context in your first session.'}
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                    {t('dashboard.groupDescription')} || {t('dashboard.noGroupsMessage')}
                 </p>
                 <div className="mb-4">
                   <p className="text-[11px] text-slate-500 mb-1">Group ID</p>
-                  <p className="text-xs font-mono bg-slate-950/90 border border-slate-800/80 px-3 py-2 rounded-lg break-all text-slate-200">
+                  <p className="text-xs font-mono dark:bg-slate-950/90  border border-slate-800/80 px-3 py-2 rounded-lg break-all  dark:text-slate-200 light:text-slate-900">
                     {group.id}
                   </p>
                 </div>
                 <div className="flex justify-between items-center mb-4">
-                  <span className="text-xs text-slate-400">
-                    Teacher:{' '}
-                    <span className="font-medium text-slate-200">{group.created_by_name}</span>
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
+                    {t('dashboard.members')}:{' '}
+                    <span className="font-medium text-slate-800 dark:text-slate-200">
+                      {group.created_by_name}
+                    </span>
                   </span>
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-slate-500 dark:text-slate-400">
                     {group.membersCount || 0} members
                   </span>
                 </div>
                 <div className="flex flex-col gap-2">
                   <button
                     onClick={() => navigate(`/group/${group.id}`)}
-                    className="w-full bg-sky-500 text-white py-2 px-4 rounded-full hover:bg-sky-400 transition text-sm"
+                    className="w-full bg-sky-500 text-white py-2 px-4 rounded-full hover:bg-sky-400 transition text-sm shadow-sm"
                   >
                     Open Group
                   </button>
@@ -520,8 +540,8 @@ const Dashboard = () => {
         )}
 
         {!loading && groups.length === 0 && (
-          <div className="text-center py-12 text-sm text-slate-400">
-            <p>No groups yet. Create or join a group to get started.</p>
+          <div className="text-center py-12 text-sm text-slate-500 dark:text-slate-400">
+            <p>{t('dashboard.noGroups')}</p>
           </div>
         )}
       </div>
@@ -530,18 +550,18 @@ const Dashboard = () => {
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md text-black">
-            <h2 className="text-2xl font-bold mb-4">Create Study Group</h2>
+            <h2 className="text-2xl font-bold mb-4">{t('dashboard.createNewGroup')}</h2>
             <form onSubmit={createGroup}>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Group Name
+                  {t('dashboard.groupName')}
                 </label>
                 <input
                   type="text"
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}
                   required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 outline-none rounded-lg focus:ring-2 focus:ring-blue-500"
                   placeholder="Enter group name"
                 />
               </div>
@@ -552,7 +572,7 @@ const Dashboard = () => {
                 <textarea
                   value={groupDescription}
                   onChange={(e) => setGroupDescription(e.target.value)}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-4 py-2 border border-gray-300 outline-none rounded-lg focus:ring-2 focus:ring-blue-500"
                   rows="3"
                   placeholder="Enter group description"
                 />
@@ -586,19 +606,19 @@ const Dashboard = () => {
       {showJoinModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 w-full max-w-md text-black">
-            <h2 className="text-2xl font-bold mb-4">Join Study Group</h2>
+            <h2 className="text-2xl font-bold mb-4">{t('dashboard.joinExistingGroup')}</h2>
             <form onSubmit={joinGroup}>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Group ID
+                  {t('dashboard.groupCode')}
                 </label>
                 <input
                   type="text"
                   value={joinGroupId}
                   onChange={(e) => setJoinGroupId(e.target.value)}
                   required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  placeholder="Enter group ID"
+                  className="w-full px-4 py-2 border outline-none border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder={t('dashboard.enterGroupId')}
                 />
               </div>
               <div className="flex gap-2">

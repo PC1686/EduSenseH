@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 // [HACKATHON TIMELINE] STEP 3 (Hour 4) - Auth State Management Logic
 import React, { useEffect } from "react";
 import { createContext, useCallback, useContext, useState, useMemo } from "react";
@@ -114,17 +115,55 @@ export const AuthProvider = ({ children }) => {
     }, []);
 
     useEffect(() => {
-        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-            setCurrentUser(session?.user ?? null);
-            if (session?.user) {
-                await loadProfile(session.user);
-            } else {
-                setUserData(null);
+        let mounted = true;
+        let isInitialized = false;
+
+        const handleSession = async (session) => {
+            try {
+                setCurrentUser(session?.user ?? null);
+                if (session?.user) {
+                    await loadProfile(session.user);
+                } else {
+                    setUserData(null);
+                }
+            } catch (error) {
+                console.error("Auth Load Error:", error);
+            } finally {
+                if (mounted) setLoading(false);
             }
-            setLoading(false);
+        };
+
+        const initAuth = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession();
+                if (!isInitialized) {
+                    isInitialized = true;
+                    await handleSession(session);
+                }
+            } catch (error) {
+                console.error("Session Check Error:", error);
+                if (mounted) setLoading(false);
+            }
+        };
+
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+            if (!mounted) return;
+
+            if (event === 'INITIAL_SESSION') {
+                isInitialized = true;
+                await handleSession(session);
+            } else if (isInitialized) {
+                await handleSession(session);
+            }
         });
 
-        return () => subscription.unsubscribe();
+        // Ensure init happens if INITIAL_SESSION is skipped by Supabase in React Strict Mode
+        initAuth();
+
+        return () => {
+            mounted = false;
+            subscription.unsubscribe();
+        };
     }, []);
 
     const value = useMemo(() => ({

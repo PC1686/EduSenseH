@@ -3,15 +3,17 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useTranslation } from 'react-i18next';
 
 const ArchiveClass = () => {
     const { groupId } = useParams();
     const { userData } = useAuth();
+    const { t } = useTranslation();
     const [sessions, setSessions] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedRecording, setSelectedRecording] = useState(null);
     const [recordingUrl, setRecordingUrl] = useState(null);
-    const [isLoadingRecording, setIsLoadingRecording] = useState(false);
+    const [loadingRecordingId, setLoadingRecordingId] = useState(null);
     const [deletingSessionId, setDeletingSessionId] = useState(null);
     const [attendanceOpen, setAttendanceOpen] = useState(false);
     const [attendanceList, setAttendanceList] = useState([]);
@@ -39,12 +41,12 @@ const ArchiveClass = () => {
     // Get signed URL and play recording
     const handlePlayRecording = async (session) => {
         try {
-            setIsLoadingRecording(true);
+            setLoadingRecordingId(session.id);
             setSelectedRecording(session);
 
             if (!session.recording_path) {
                 alert('No recording available for this session');
-                setIsLoadingRecording(false);
+                setLoadingRecordingId(null);
                 return;
             }
 
@@ -55,8 +57,8 @@ const ArchiveClass = () => {
 
             if (error) {
                 console.error('[ArchiveClass] Error getting recording URL:', error);
-                alert('Failed to load recording: ' + error.message);
-                setIsLoadingRecording(false);
+                alert(t('errors.fileUploadError'));
+                setLoadingRecordingId(null);
                 return;
             }
 
@@ -64,9 +66,9 @@ const ArchiveClass = () => {
             console.log('[ArchiveClass] Recording URL generated successfully');
         } catch (err) {
             console.error('[ArchiveClass] Error playing recording:', err);
-            alert('Failed to play recording: ' + err.message);
+            alert(t('errors.recordingError'));
         } finally {
-            setIsLoadingRecording(false);
+            setLoadingRecordingId(null);
         }
     };
 
@@ -78,7 +80,7 @@ const ArchiveClass = () => {
 
     // Delete recording and session
     const handleDeleteRecording = async (session) => {
-        if (!window.confirm(`Delete recording for "${session.title}"? This cannot be undone.`)) {
+        if (!window.confirm(`${t('archive.delete')} "${session.title}"? ${t('errors.validationError')}`)) {
             return;
         }
 
@@ -93,7 +95,7 @@ const ArchiveClass = () => {
 
                 if (storageError && !storageError.message.includes('not found')) {
                     console.error('[ArchiveClass] Storage deletion error:', storageError);
-                    alert('Failed to delete recording file: ' + storageError.message);
+                    alert(t('errors.fileUploadError') + ': ' + storageError.message);
                     return;
                 }
                 console.log('[ArchiveClass] Recording file deleted from storage');
@@ -107,17 +109,17 @@ const ArchiveClass = () => {
 
             if (dbError) {
                 console.error('[ArchiveClass] Database deletion error:', dbError);
-                alert('Failed to delete session: ' + dbError.message);
+                alert(t('errors.serverError') + ': ' + dbError.message);
                 return;
             }
 
             // Remove from UI
             setSessions((prev) => prev.filter((s) => s.id !== session.id));
             console.log('[ArchiveClass] Recording and session deleted successfully');
-            alert('Recording deleted successfully');
+            alert(t('success.recordingDeleted'));
         } catch (err) {
             console.error('[ArchiveClass] Error deleting recording:', err);
-            alert('Failed to delete recording: ' + err.message);
+            alert(t('errors.serverError') + ': ' + (err.message || err));
         } finally {
             setDeletingSessionId(null);
         }
@@ -179,7 +181,7 @@ const ArchiveClass = () => {
             setAttendanceList(enriched);
         } catch (err) {
             console.error('[ArchiveClass] Error fetching attendance:', err);
-            alert('Failed to load attendance: ' + (err.message || err));
+            alert(t('errors.validationError') + ': ' + (err.message || err));
         } finally {
             setLoadingAttendance(false);
         }
@@ -252,11 +254,11 @@ const ArchiveClass = () => {
     // removed duplicate fetchArchivedSessions
 
     return (
-        <div className="p-4 sm:p-8 bg-slate-50 min-h-screen">
+        <div className="p-4 sm:p-8 bg-slate-50 dark:bg-slate-950 min-h-screen text-slate-900 dark:text-slate-50 transition-colors">
             <div className="flex flex-col sm:flex-row items-center justify-between mb-8 max-w-7xl mx-auto gap-4">
                 <div className="text-center sm:text-left">
                     <h1 className="text-2xl sm:text-3xl font-bold text-[#1976d2] mb-1">Class Archive & Intelligence</h1>
-                    <p className="text-gray-500 text-sm sm:text-base">Revisit past lessons with AI-generated summaries and transcripts.</p>
+                    <p className="text-gray-500 dark:text-slate-300 text-sm sm:text-base">Revisit past lessons with AI-generated summaries and transcripts.</p>
                 </div>
             </div>
 
@@ -265,17 +267,17 @@ const ArchiveClass = () => {
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#1976d2]"></div>
                 </div>
             ) : sessions.length === 0 ? (
-                <div className="text-center py-20 bg-white rounded-2xl shadow-sm max-w-7xl mx-auto border border-dashed border-gray-300">
+                <div className="text-center py-20 bg-white dark:bg-slate-900 rounded-2xl shadow-sm max-w-7xl mx-auto border border-dashed border-gray-300 dark:border-slate-800">
                     <div className="text-5xl mb-4">📚</div>
-                    <p className="text-gray-500 text-lg">No archived classes found yet.</p>
-                    <p className="text-gray-400 text-sm">Once a live class ends, it will appear here.</p>
+                    <p className="text-gray-500 dark:text-slate-300 text-lg">No archived classes found yet.</p>
+                    <p className="text-gray-400 dark:text-slate-400 text-sm">Once a live class ends, it will appear here.</p>
                 </div>
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-7xl mx-auto">
                     {sessions.map((session) => (
-                        <div key={session.id} className="bg-white rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-100 group flex flex-col">
+                        <div key={session.id} className="bg-white dark:bg-slate-900 rounded-2xl shadow-md overflow-hidden hover:shadow-xl transition-all duration-300 border border-gray-100 dark:border-slate-800 group flex flex-col transition-colors">
                             {/* Thumbnail or visual placeholder */}
-                            <div className="h-32 bg-linear-to-r from-blue-500 to-indigo-600 flex items-center justify-center relative overflow-hidden">
+                            <div className="h-32 bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center relative overflow-hidden">
                                 <div className="absolute inset-0 bg-white/10 skew-y-12 transform scale-150 origin-bottom-left"></div>
                                 <span className="text-white font-bold text-3xl opacity-80 z-10">
                                     {new Date(session.start_time).getDate()}
@@ -286,9 +288,9 @@ const ArchiveClass = () => {
                             </div>
 
                             <div className="p-6 flex-1 flex flex-col">
-                                <h3 className="text-xl font-bold text-gray-800 mb-2 truncate" title={session.title}>{session.title}</h3>
+                                <h3 className="text-xl font-bold text-gray-800 dark:text-slate-50 mb-2 truncate" title={session.title}>{session.title}</h3>
                                 <div className="flex items-center gap-2 mb-4">
-                                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">
+                                    <span className="text-xs bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-200 px-2 py-1 rounded">
                                         {new Date(session.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                     <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">
@@ -297,7 +299,7 @@ const ArchiveClass = () => {
                                 </div>
 
                                 {session.description && (
-                                    <p className="text-gray-600 text-sm mb-4 line-clamp-2">{session.description}</p>
+                                    <p className="text-gray-600 dark:text-slate-300 text-sm mb-4 line-clamp-2">{session.description}</p>
                                 )}
 
                                 {/* AI Insights Section */}
@@ -305,8 +307,8 @@ const ArchiveClass = () => {
                                     <div className="mb-4">
                                         <h4 className="text-xs font-bold text-blue-600 uppercase mb-2">AI Insights</h4>
                                         <div className="flex gap-2 flex-wrap">
-                                            <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2 py-1 rounded-full">Scalar Product</span>
-                                            <span className="text-[10px] bg-blue-50 text-blue-700 border border-blue-100 px-2 py-1 rounded-full">Vectors</span>
+                                            <span className="text-[10px] bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-200 border border-blue-100 dark:border-blue-900/40 px-2 py-1 rounded-full">Scalar Product</span>
+                                            <span className="text-[10px] bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-200 border border-blue-100 dark:border-blue-900/40 px-2 py-1 rounded-full">Vectors</span>
                                         </div>
                                     </div>
 
@@ -314,10 +316,13 @@ const ArchiveClass = () => {
                                         {session.recording_path ? (
                                             <button
                                                 onClick={() => handlePlayRecording(session)}
-                                                disabled={isLoadingRecording}
-                                                className="w-full py-2.5 bg-[#1976d2] text-white rounded-xl text-sm font-bold hover:bg-[#1565c0] transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-wait"
+                                                disabled={loadingRecordingId === session.id}
+                                                className="w-full py-2.5 bg-gradient-to-r from-[#1976d2] to-[#1565c0] text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-blue-500/30 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-wait hover:scale-[1.02] active:scale-[0.98] group/viewbtn shadow-md"
                                             >
-                                                <span>{isLoadingRecording ? '⏳' : '▶'}</span> {isLoadingRecording ? 'Loading...' : 'View'}
+                                                <span className={`${loadingRecordingId === session.id ? 'animate-spin' : 'group-hover/viewbtn:animate-bounce'}`}>
+                                                    {loadingRecordingId === session.id ? '⏳' : '▶'}
+                                                </span>
+                                                <span>{loadingRecordingId === session.id ? 'Loading...' : 'View Recording'}</span>
                                             </button>
                                         ) : (
                                             <button disabled className="w-full py-2.5 bg-gray-100 text-gray-400 rounded-xl text-sm font-bold cursor-not-allowed">
@@ -337,11 +342,14 @@ const ArchiveClass = () => {
                                             {userData?.role === 'teacher' ? (
                                                 // add attencence button
                                                 <button
-                                                    className="w-full py-2.5 bg-green-600 text-white rounded-xl text-sm font-bold hover:bg-green-700 transition-colors shadow-md flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-wait"
+                                                    className="w-full py-2.5 bg-gradient-to-r from-green-600 to-emerald-700 text-white rounded-xl text-sm font-bold hover:shadow-lg hover:shadow-green-500/30 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-wait hover:scale-[1.02] active:scale-[0.98] group/attbtn shadow-md"
                                                     onClick={() => handleViewAttendance(session)}
-                                                    disabled={deletingSessionId === session.id}
+                                                    disabled={loadingAttendance && attendanceSession?.id === session.id}
                                                 >
-                                                    <span>📋</span> View Attendance
+                                                    <span className={`${loadingAttendance && attendanceSession?.id === session.id ? 'animate-spin' : 'group-hover/attbtn:animate-bounce'}`}>
+                                                        {loadingAttendance && attendanceSession?.id === session.id ? '⏳' : '📋'}
+                                                    </span>
+                                                    <span>{loadingAttendance && attendanceSession?.id === session.id ? 'Loading...' : 'View Attendance'}</span>
                                                 </button>
                                             ) : null}
                                         </div>
@@ -357,9 +365,9 @@ const ArchiveClass = () => {
             {/* Attendance Modal */}
             {attendanceOpen && attendanceSession && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col transition-colors">
                         {/* Header */}
-                        <div className="bg-linear-to-r from-[#1976d2] to-[#1565c0] p-5 rounded-t-2xl flex items-center justify-between shrink-0">
+                        <div className="bg-gradient-to-r from-[#1976d2] to-[#1565c0] p-5 rounded-t-2xl flex items-center justify-between shrink-0">
                             <div>
                                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                                     📋 Attendance Report
@@ -389,41 +397,41 @@ const ArchiveClass = () => {
                             ) : attendanceList.length === 0 ? (
                                 <div className="flex flex-col items-center justify-center py-16 gap-3">
                                     <div className="text-5xl">🎓</div>
-                                    <h4 className="text-gray-700 font-semibold">No attendance records found</h4>
-                                    <p className="text-gray-400 text-sm text-center max-w-xs">
+                                    <h4 className="text-gray-700 dark:text-slate-200 font-semibold">No attendance records found</h4>
+                                    <p className="text-gray-400 dark:text-slate-400 text-sm text-center max-w-xs">
                                         No students joined this session using the roll number form, or the session predates attendance tracking.
                                     </p>
                                 </div>
                             ) : (
                                 <table className="w-full text-sm border-collapse">
                                     <thead>
-                                        <tr className="bg-gray-50 border-b border-gray-200">
-                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wider">#</th>
-                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Student Name</th>
-                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Roll No.</th>
-                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Email</th>
-                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 uppercase tracking-wider">Joined At</th>
+                                        <tr className="bg-gray-50 dark:bg-slate-800 border-b border-gray-200 dark:border-slate-700">
+                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider">#</th>
+                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider">Student Name</th>
+                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider">Roll No.</th>
+                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider">Email</th>
+                                            <th className="text-left py-3 px-3 text-xs font-bold text-gray-500 dark:text-slate-300 uppercase tracking-wider">Joined At</th>
                                         </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-100">
+                                    <tbody className="divide-y divide-gray-100 dark:divide-slate-800">
                                         {attendanceList.map((a, idx) => (
-                                            <tr key={idx} className="hover:bg-blue-50 transition-colors">
-                                                <td className="py-3 px-3 text-gray-400 font-medium">{idx + 1}</td>
+                                            <tr key={idx} className="hover:bg-blue-50 dark:hover:bg-blue-950/20 transition-colors">
+                                                <td className="py-3 px-3 text-gray-400 dark:text-slate-400 font-medium">{idx + 1}</td>
                                                 <td className="py-3 px-3">
                                                     <div className="flex items-center gap-2">
-                                                        <div className="w-7 h-7 rounded-full bg-linear-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
+                                                        <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-400 to-indigo-500 flex items-center justify-center text-white text-xs font-bold shrink-0">
                                                             {(a.display_name || '?').charAt(0).toUpperCase()}
                                                         </div>
-                                                        <span className="font-medium text-gray-800">{a.display_name || '—'}</span>
+                                                        <span className="font-medium text-gray-800 dark:text-slate-50">{a.display_name || '—'}</span>
                                                     </div>
                                                 </td>
                                                 <td className="py-3 px-3">
-                                                    <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded text-xs font-semibold">
+                                                    <span className="bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-200 px-2 py-0.5 rounded text-xs font-semibold">
                                                         {a.roll_number || '—'}
                                                     </span>
                                                 </td>
-                                                <td className="py-3 px-3 text-gray-500 text-xs">{a.display_email || '—'}</td>
-                                                <td className="py-3 px-3 text-gray-400 text-xs">{getAttendanceTime(a)}</td>
+                                                <td className="py-3 px-3 text-gray-500 dark:text-slate-300 text-xs">{a.display_email || '—'}</td>
+                                                <td className="py-3 px-3 text-gray-400 dark:text-slate-400 text-xs">{getAttendanceTime(a)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
@@ -452,9 +460,9 @@ const ArchiveClass = () => {
             {/* Recording Player Modal */}
             {selectedRecording && recordingUrl && (
                 <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
-                    <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-auto">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-auto transition-colors">
                         {/* Modal Header */}
-                        <div className="sticky top-0 bg-linear-to-r from-[#1976d2] to-[#1565c0] p-6 flex items-center justify-between border-b border-blue-300">
+                        <div className="sticky top-0 bg-gradient-to-r from-[#1976d2] to-[#1565c0] p-6 flex items-center justify-between border-b border-blue-300">
                             <div>
                                 <h2 className="text-xl font-bold text-white">{selectedRecording.title}</h2>
                                 <p className="text-blue-100 text-sm mt-1">
@@ -472,14 +480,14 @@ const ArchiveClass = () => {
 
                         {/* Modal Content */}
                         <div className="p-8">
-                            <div className="bg-gray-50 rounded-xl p-6 shadow-inner">
-                                <div className="mb-4 flex items-center gap-2 text-gray-600 text-sm">
+                            <div className="bg-gray-50 dark:bg-slate-800 rounded-xl p-6 shadow-inner transition-colors">
+                                <div className="mb-4 flex items-center gap-2 text-gray-600 dark:text-slate-300 text-sm">
                                     <span>🎙️</span>
                                     <span>Audio Recording</span>
                                 </div>
 
                                 {/* Audio Player */}
-                                <div className="bg-white rounded-lg p-6 shadow-md border border-gray-200">
+                                <div className="bg-white dark:bg-slate-900 rounded-lg p-6 shadow-md border border-gray-200 dark:border-slate-800">
                                     <audio
                                         controls
                                         autoPlay
@@ -495,21 +503,21 @@ const ArchiveClass = () => {
                                 <div className="mt-6 grid grid-cols-2 gap-4">
                                     <div className="bg-blue-50 rounded-lg p-4 border border-blue-100">
                                         <p className="text-xs text-blue-600 font-semibold uppercase">Recording Path</p>
-                                        <p className="text-sm text-gray-700 mt-1 font-mono truncate">
+                                        <p className="text-sm text-gray-700 dark:text-slate-400 mt-1 font-mono truncate">
                                             {selectedRecording.recording_path}
                                         </p>
                                     </div>
                                     <div className="bg-green-50 rounded-lg p-4 border border-green-100">
                                         <p className="text-xs text-green-600 font-semibold uppercase">Duration</p>
-                                        <p className="text-sm text-gray-700 mt-1">Recorded during class</p>
+                                        <p className="text-sm text-gray-700 dark:text-slate-400 mt-1">Recorded during class</p>
                                     </div>
                                 </div>
 
                                 {/* Session Description */}
                                 {selectedRecording.description && (
-                                    <div className="mt-6 bg-gray-50 rounded-lg p-4 border border-gray-200">
-                                        <p className="text-xs text-gray-600 font-semibold uppercase mb-2">Session Notes</p>
-                                        <p className="text-sm text-gray-700">{selectedRecording.description}</p>
+                                    <div className="mt-6 bg-gray-50 dark:bg-slate-800 rounded-lg p-4 border border-gray-200 dark:border-slate-700">
+                                        <p className="text-xs text-gray-600 dark:text-slate-300 font-semibold uppercase mb-2">Session Notes</p>
+                                        <p className="text-sm text-gray-700 dark:text-slate-200">{selectedRecording.description}</p>
                                     </div>
                                 )}
 
@@ -524,7 +532,7 @@ const ArchiveClass = () => {
                                     </a>
                                     <button
                                         onClick={closeRecordingPlayer}
-                                        className="flex-1 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors"
+                                        className="flex-1 py-3 bg-gray-200 dark:bg-slate-700 text-gray-700 dark:text-slate-100 rounded-lg font-semibold hover:bg-gray-300 dark:hover:bg-slate-600 transition-colors"
                                     >
                                         Close
                                     </button>

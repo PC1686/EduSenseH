@@ -3,6 +3,7 @@
 import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider } from './context/ThemeContext';
 import ProtectedRoute from './components/ProtectedRoute'; // Ensures only logged-in users see the dashboard
 import Navbar from './components/Navbar';
 
@@ -16,6 +17,7 @@ const LiveClass = lazy(() => import('./pages/LiveClass'));
 const Chat = lazy(() => import('./pages/Chat'));
 const Resources = lazy(() => import('./pages/Resources'));
 const ArchiveClass = lazy(() => import('./pages/ArchiveClass'));
+const Profile = lazy(() => import('./pages/Profile'));
 
 
 
@@ -24,16 +26,16 @@ const AppRoutes = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-950 transition-colors">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500" />
       </div>
     );
   }
 
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-slate-950">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500"></div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-950 transition-colors">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-sky-500" />
       </div>
     }>
       <Routes>
@@ -56,6 +58,17 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Navbar>
+                <Profile />
+              </Navbar>
             </ProtectedRoute>
           }
         />
@@ -97,7 +110,7 @@ const AppRoutes = () => {
           element={
             <ProtectedRoute>
               <Navbar>
-                  <ArchiveClass />
+                <ArchiveClass />
               </Navbar>
             </ProtectedRoute>
           }
@@ -112,9 +125,13 @@ const AppRoutes = () => {
 function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true }}>
-      <AuthProvider>
-        <AppRoutes />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-50 transition-colors">
+            <AppRoutes />
+          </div>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }
