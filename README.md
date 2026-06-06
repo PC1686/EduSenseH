@@ -118,35 +118,4 @@ See the `LICENSE` file for more details.
 
 ---
 
-Built for students, teachers, and anyone who believes learning should be smarter and more accessible.
 
----
-
-## 🔒 Secure AI Orchestration (New)
-
-EduSenseH now supports server-side AI orchestration through Supabase Functions.
-
-### Deployed Functions
-- `live-signals`
-- `generate-artifacts`
-- `personal-capsule`
-- `moderate-content`
-- `stt-token`
-
-### Required Supabase Secrets
-- `GROQ_API_KEY`
-- `GROQ_MODEL` (optional)
-- `ASSEMBLYAI_API_KEY`
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-
-### Database Migration
-Run the migration in:
-- `supabase/migrations/20260403_hackathon_intelligence.sql`
-
-This migration adds:
-- `learning_signals`
-- `ai_artifacts`
-- `student_recap_jobs`
-- RLS policies and performance indexes
