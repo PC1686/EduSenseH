@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
+// import { moderateContent } from '../lib/aiWorkflows';
 
 
 const Chat = () => {
@@ -15,7 +16,6 @@ const Chat = () => {
     const [chatFile, setChatFile] = useState(null);
     const [chatFilePreview, setChatFilePreview] = useState(null);
     const [realtimeEnabled, setRealtimeEnabled] = useState(true);
-    const [onlineUsers, setOnlineUsers] = useState([]);
     const [typingUsers, setTypingUsers] = useState([]);
     const channelRef = useRef(null);
     const typingTimeoutRef = useRef({});
@@ -206,6 +206,23 @@ const Chat = () => {
         if (messageSending) return;
 
         const messageText = newMessage.trim();
+        let safeMessageText = messageText;
+        if (messageText) {
+            try {
+                const moderation = await moderateContent({
+                    group_id: groupId,
+                    channel: 'chat',
+                    text: messageText,
+                });
+                if (!moderation?.approved) {
+                    alert('Message blocked by classroom safety filters.');
+                    return;
+                }
+                safeMessageText = moderation?.sanitized_text || messageText;
+            } catch (moderationError) {
+                console.warn('Moderation unavailable, sending original text:', moderationError);
+            }
+        }
         const tempId = `temp-${Date.now()}`;
 
         // Optimistic UI update - show message immediately
@@ -214,7 +231,7 @@ const Chat = () => {
             group_id: groupId,
             user_id: userData.id,
             user_name: userData.name || userData.email || 'You',
-            text: messageText,
+            text: safeMessageText,
             file_url: chatFilePreview || null,
             file_name: chatFile ? chatFile.name : null,
             file_type: chatFile ? chatFile.type : null,
@@ -262,7 +279,7 @@ const Chat = () => {
                 console.error('Error uploading chat file:', error);
                 alert('Failed to upload file: ' + error.message);
                 setMessages(prev => prev.filter(msg => msg.id !== tempId));
-                setNewMessage(messageText);
+                setNewMessage(safeMessageText);
                 return;
             }
         }
@@ -273,7 +290,7 @@ const Chat = () => {
                 group_id: groupId,
                 user_id: userData.id,
                 user_name: userData.name || userData.email,
-                text: messageText,
+                text: safeMessageText,
                 file_url: fileUrl,
                 file_name: fileName,
                 file_type: fileType,
@@ -448,15 +465,15 @@ const Chat = () => {
     }
 
     return (
-        <div className="flex h-[calc(100vh-80px)] bg-slate-100 p-2 sm:p-4 gap-4">
+        <div className="flex h-[calc(100vh-80px)] bg-slate-100 dark:bg-slate-950 p-2 sm:p-4 gap-4 text-slate-900 dark:text-slate-50 transition-colors">
             {/* Main Chat Area */}
-            <div className="flex-1 bg-white rounded-2xl shadow-md flex flex-col overflow-hidden border border-gray-100 relative">
-                <div className="p-3 sm:p-4 border-b border-gray-100 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 gap-3">
+            <div className="flex-1 bg-white dark:bg-slate-900 rounded-2xl shadow-md flex flex-col overflow-hidden border border-gray-100 dark:border-slate-800 relative transition-colors">
+                <div className="p-3 sm:p-4 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row justify-between items-start sm:items-center bg-gray-50 dark:bg-slate-800/50 gap-3 transition-colors">
                     <div>
-                        <h3 className="text-base sm:text-lg font-bold text-gray-800 m-0">
+                        <h3 className="text-base sm:text-lg font-bold text-gray-800 dark:text-slate-50 m-0">
                             {group ? `${group.name} - Group Chat` : 'Group Chat'}
                         </h3>
-                        <p className="text-[10px] sm:text-xs text-gray-500 m-0">Collaborate with your peers</p>
+                        <p className="text-[10px] sm:text-xs text-gray-500 dark:text-slate-300 m-0">Collaborate with your peers</p>
                     </div>
 
                     <div className="flex items-center gap-3 sm:gap-4 w-full sm:w-auto justify-between sm:justify-end">
@@ -470,7 +487,7 @@ const Chat = () => {
                         )}
                         <div className="flex items-center gap-2">
                             <div className={`w-2 h-2 rounded-full ${realtimeEnabled ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`} />
-                            <span className="text-[10px] sm:text-xs text-gray-500 font-medium">
+                            <span className="text-[10px] sm:text-xs text-gray-500 dark:text-slate-300 font-medium">
                                 {realtimeEnabled ? 'Live' : 'Connecting...'}
                             </span>
                         </div>
@@ -479,7 +496,7 @@ const Chat = () => {
 
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
                     {messages.length === 0 && (
-                        <div className="text-center text-gray-400 mt-10">
+                        <div className="text-center text-gray-400 dark:text-slate-400 mt-10">
                             <p>No messages yet. Start the conversation!</p>
                         </div>
                     )}
@@ -487,7 +504,7 @@ const Chat = () => {
                     {/* Typing Indicator */}
                     {typingUsers.length > 0 && (
                         <div className="flex justify-start">
-                            <div className="bg-gray-100 text-gray-600 px-4 py-2 rounded-2xl rounded-bl-none text-sm flex items-center gap-2">
+                            <div className="bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-200 px-4 py-2 rounded-2xl rounded-bl-none text-sm flex items-center gap-2 transition-colors">
                                 <div className="flex gap-1">
                                     <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></span>
                                     <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></span>
@@ -514,9 +531,9 @@ const Chat = () => {
                         return (
                             <div key={msg.id} className={`flex ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
                                 <div className={`max-w-[85%] sm:max-w-[80%] lg:max-w-md px-4 py-2.5 sm:px-5 sm:py-3 rounded-2xl relative group shadow-sm ${isMyMessage ? 'bg-blue-600 text-white rounded-br-none' :
-                                    isAi ? 'bg-linear-to-r from-purple-600 to-indigo-600 text-white border-2 border-purple-200' :
-                                        msg._isFailed ? 'bg-red-50 text-red-800 border border-red-200 rounded-bl-none' :
-                                            'bg-white text-gray-800 border border-gray-100 rounded-bl-none'
+                                    isAi ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white border-2 border-purple-200' :
+                                        msg._isFailed ? 'bg-red-50 dark:bg-red-950/20 text-red-800 dark:text-red-200 border border-red-200 dark:border-red-900/40 rounded-bl-none' :
+                                            'bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-100 border border-gray-100 dark:border-slate-800 rounded-bl-none'
                                     } ${msg.id.toString().startsWith('temp-') && !msg._isFailed ? 'opacity-75' : ''}`}>
 
                                     {canDelete && !isAi && (
@@ -529,7 +546,7 @@ const Chat = () => {
                                         </button>
                                     )}
 
-                                    <p className={`font-bold text-xs mb-1 opacity-90 ${isMyMessage ? 'text-blue-100' : isAi ? 'text-purple-100' : 'text-gray-500'}`}>{msg.user_name}</p>
+                                    <p className={`font-bold text-xs mb-1 opacity-90 ${isMyMessage ? 'text-blue-100' : isAi ? 'text-purple-100' : 'text-gray-500 dark:text-slate-300'}`}>{msg.user_name}</p>
                                     {msg.text && <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.text}</p>}
 
                                     {msg.file_url && (
@@ -586,9 +603,9 @@ const Chat = () => {
                     <div ref={messagesEndRef} />
                 </div>
 
-                <form onSubmit={sendMessage} className="p-4 bg-white border-t border-gray-100">
+                <form onSubmit={sendMessage} className="p-4 bg-white dark:bg-slate-900 border-t border-gray-100 dark:border-slate-800 transition-colors">
                     {chatFile && (
-                        <div className="mb-3 p-3 bg-blue-50 rounded-xl border border-blue-100 flex items-center justify-between animate-fade-in-up">
+                        <div className="mb-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-xl border border-blue-100 dark:border-blue-900/40 flex items-center justify-between animate-fade-in-up">
                             <div className="flex items-center gap-3">
                                 {chatFile.type.startsWith('image/') ? (
                                     <img src={chatFilePreview} alt="Preview" className="h-10 w-10 object-cover rounded-lg shadow-sm" />
@@ -597,9 +614,9 @@ const Chat = () => {
                                         📄
                                     </div>
                                 )}
-                                <div className="text-sm font-medium text-gray-700 truncate max-w-50">{chatFile.name}</div>
+                                <div className="text-sm font-medium text-gray-700 dark:text-slate-200 truncate max-w-50">{chatFile.name}</div>
                             </div>
-                            <button type="button" onClick={clearChatFile} className="text-red-500 hover:bg-red-50 p-1 rounded-full">
+                            <button type="button" onClick={clearChatFile} className="text-red-500 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 p-1 rounded-full transition-colors">
                                 ✕
                             </button>
                         </div>
@@ -615,7 +632,7 @@ const Chat = () => {
                         <button
                             type="button"
                             onClick={() => fileInputRef.current?.click()}
-                            className="px-4 py-3 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 transition-colors"
+                            className="px-4 py-3 bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-200 rounded-xl hover:bg-gray-200 dark:hover:bg-slate-700 transition-colors"
                         >
                             📎
                         </button>
@@ -624,7 +641,7 @@ const Chat = () => {
                             value={newMessage}
                             onChange={onMessageChange}
                             placeholder="Type a message..."
-                            className="flex-1 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:outline-none bg-gray-50 focus:bg-white transition-all text-sm"
+                            className="flex-1 px-4 py-3 border border-gray-200 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500/50 focus:outline-none bg-gray-50 dark:bg-slate-800 focus:bg-white dark:focus:bg-slate-800 transition-all text-sm dark:text-slate-100"
                         />
                         <button
                             type="submit"
@@ -638,15 +655,15 @@ const Chat = () => {
 
                 {/* Active Poll Overlay */}
                 {activePoll && (
-                    <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 bg-white rounded-2xl shadow-2xl border border-indigo-100 p-6 animate-fade-in-down">
+                    <div className="absolute top-20 left-1/2 -translate-x-1/2 w-[90%] max-w-sm z-50 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-indigo-100 dark:border-indigo-900/40 p-6 animate-fade-in-down transition-colors">
                         <div className="flex justify-between items-start mb-4">
                             <div>
-                                <h4 className="text-gray-900 font-bold m-0">{activePoll.question}</h4>
-                                <p className="text-[10px] text-gray-500 m-0 mt-1">
+                                <h4 className="text-gray-900 dark:text-slate-50 font-bold m-0">{activePoll.question}</h4>
+                                <p className="text-[10px] text-gray-500 dark:text-slate-300 m-0 mt-1">
                                     {userData?.role === 'teacher' ? 'Live Results' : 'Choose an answer'}
                                 </p>
                             </div>
-                            <button onClick={() => setActivePoll(null)} className="text-gray-400 hover:text-gray-600">✕</button>
+                            <button onClick={() => setActivePoll(null)} className="text-gray-400 dark:text-slate-400 hover:text-gray-600 dark:hover:text-slate-200 transition-colors">✕</button>
                         </div>
 
                         <div className="space-y-2">
@@ -658,20 +675,20 @@ const Chat = () => {
                                 return (
                                     <div key={idx} className="relative">
                                         {userData?.role === 'teacher' ? (
-                                            <div className="w-full p-3 rounded-xl bg-gray-50 border border-gray-100 overflow-hidden">
+                                            <div className="w-full p-3 rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 overflow-hidden">
                                                 <div
-                                                    className="absolute inset-0 bg-indigo-50 transition-all duration-500"
+                                                    className="absolute inset-0 bg-indigo-50 dark:bg-indigo-950/30 transition-all duration-500"
                                                     style={{ width: `${percentage}%` }}
                                                 />
                                                 <div className="relative flex justify-between items-center text-sm">
-                                                    <span className="font-medium text-gray-700">{option}</span>
+                                                    <span className="font-medium text-gray-700 dark:text-slate-100">{option}</span>
                                                     <span className="font-bold text-indigo-600">{percentage}% ({responseCount})</span>
                                                 </div>
                                             </div>
                                         ) : (
                                             <button
                                                 onClick={() => respondPoll(idx)}
-                                                className="w-full p-3 text-left rounded-xl bg-gray-50 border border-gray-100 hover:border-indigo-300 hover:bg-indigo-50 transition-all text-sm font-medium text-gray-700"
+                                                className="w-full p-3 text-left rounded-xl bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/20 transition-all text-sm font-medium text-gray-700 dark:text-slate-100"
                                             >
                                                 {option}
                                             </button>
@@ -682,8 +699,8 @@ const Chat = () => {
                         </div>
 
                         {userData?.role === 'teacher' && (
-                            <div className="mt-4 pt-4 border-t border-gray-50 flex justify-between items-center">
-                                <span className="text-xs text-gray-500">{pollResponses.length} total responses</span>
+                            <div className="mt-4 pt-4 border-t border-gray-50 dark:border-slate-800 flex justify-between items-center">
+                                <span className="text-xs text-gray-500 dark:text-slate-300">{pollResponses.length} total responses</span>
                                 <button
                                     onClick={() => setActivePoll(null)}
                                     className="text-xs font-bold text-red-500 hover:underline"
@@ -698,23 +715,23 @@ const Chat = () => {
                 {/* Poll Creation Modal */}
                 {showPollModal && (
                     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-                        <div className="bg-white rounded-3xl w-full max-w-md p-8 shadow-2xl scale-in">
-                            <h3 className="text-2xl font-black text-gray-900 mb-6">Create a Poll</h3>
+                        <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-md p-8 shadow-2xl scale-in transition-colors">
+                            <h3 className="text-2xl font-black text-gray-900 dark:text-slate-50 mb-6">Create a Poll</h3>
 
                             <div className="space-y-6">
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Question</label>
+                                    <label className="block text-xs font-bold text-gray-500 dark:text-slate-300 uppercase tracking-widest mb-2">Question</label>
                                     <input
                                         type="text"
                                         value={pollQuestion}
                                         onChange={(e) => setPollQuestion(e.target.value)}
                                         placeholder="What do you want to ask?"
-                                        className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium"
+                                        className="w-full p-4 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500/50 outline-none text-sm font-medium text-gray-800 dark:text-slate-100"
                                     />
                                 </div>
 
                                 <div>
-                                    <label className="block text-xs font-bold text-gray-500 uppercase tracking-widest mb-2">Options (Max 5)</label>
+                                    <label className="block text-xs font-bold text-gray-500 dark:text-slate-300 uppercase tracking-widest mb-2">Options (Max 5)</label>
                                     <div className="space-y-3">
                                         {pollOptions.map((opt, idx) => (
                                             <div key={idx} className="flex gap-2">
@@ -723,12 +740,12 @@ const Chat = () => {
                                                     value={opt}
                                                     onChange={(e) => updatePollOption(idx, e.target.value)}
                                                     placeholder={`Option ${idx + 1}`}
-                                                    className="flex-1 p-3 bg-gray-50 border border-gray-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                                                    className="flex-1 p-3 bg-gray-50 dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500/50 outline-none text-sm text-gray-800 dark:text-slate-100"
                                                 />
                                                 {pollOptions.length > 2 && (
                                                     <button
                                                         onClick={() => removePollOption(idx)}
-                                                        className="p-3 text-red-500 hover:bg-red-50 rounded-xl transition-colors"
+                                                        className="p-3 text-red-500 dark:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-colors"
                                                     >
                                                         ✕
                                                     </button>
@@ -751,7 +768,7 @@ const Chat = () => {
                             <div className="flex gap-3 mt-8">
                                 <button
                                     onClick={() => setShowPollModal(false)}
-                                    className="flex-1 py-4 bg-gray-100 text-gray-700 font-bold rounded-2xl hover:bg-gray-200 transition-all"
+                                    className="flex-1 py-4 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 font-bold rounded-2xl hover:bg-gray-200 dark:hover:bg-slate-700 transition-all"
                                 >
                                     Cancel
                                 </button>

@@ -22,6 +22,7 @@ function Resources() {
     const [loadingAI, setLoadingAI] = useState(false);
     const [aiError, setAiError] = useState(null);
     const [extractingFileId, setExtractingFileId] = useState(null);
+    const [aiLanguage, setAiLanguage] = useState('en'); // Language for AI processing
 
     // Interactive Quiz States (temporary, not stored in Supabase)
     const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -162,7 +163,7 @@ function Resources() {
 
             if (isAudio) {
                 setAiInputText(`[Transcribing audio from ${file.name} using AssemblyAI...]`);
-                const transcription = await aiService.transcribeAudio(file.url);
+                const transcription = await aiService.transcribeAudio(file.url, aiLanguage);
                 return transcription;
             }
 
@@ -206,7 +207,7 @@ function Resources() {
         setQuiz(null); setFlashcards(null); setAiError(null);
 
         try {
-            const result = await aiService.generateSummary(aiInputText);
+            const result = await aiService.generateSummary(aiInputText, aiLanguage);
             setSummary(result);
         } catch {
             setAiError("Failed to generate summary.");
@@ -229,7 +230,7 @@ function Resources() {
         setQuizSubmitted(false);
 
         try {
-            const result = await aiService.generateQuiz(aiInputText);
+            const result = await aiService.generateQuiz(aiInputText, aiLanguage);
             setQuiz(result);
         } catch {
             setAiError("Failed to generate quiz.");
@@ -261,12 +262,12 @@ function Resources() {
     // flashcards generation not used in UI, removing to satisfy lint
 
     return (
-        <div className="flex-1 p-3 sm:p-8 min-h-screen bg-slate-50">
-            <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl p-4 sm:p-8 border border-gray-100">
-                <div className="flex flex-col sm:flex-row justify-between items-center mb-8 pb-6 border-b border-gray-100 gap-4">
+        <div className="flex-1 p-3 sm:p-8 min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors">
+            <div className="max-w-6xl mx-auto bg-white dark:bg-slate-900 rounded-2xl shadow-xl p-4 sm:p-8 border border-gray-100 dark:border-slate-800 transition-colors">
+                <div className="flex flex-col sm:flex-row justify-between items-center mb-8 pb-6 border-b border-gray-100 dark:border-slate-800 gap-4">
                     <div className="text-center sm:text-left">
                         <h2 className="m-0 text-[#1976d2] text-2xl sm:text-3xl font-bold">Smart Learning Resources</h2>
-                        <p className="text-gray-500 m-0 mt-1 text-sm">Upload materials and let AI generate study aids.</p>
+                        <p className="text-gray-500 dark:text-slate-300 m-0 mt-1 text-sm">Upload materials and let AI generate study aids.</p>
                     </div>
                     {role === 'teacher' && (
                         <div className="w-full sm:w-auto text-center sm:text-right">
@@ -290,12 +291,25 @@ function Resources() {
 
                 {/* AI Workspace - Textarea and Generation Buttons */}
                 {role === 'student' && (
-                    <div className="mb-10 bg-blue-50/50 p-6 rounded-2xl border border-blue-100">
+                    <div className="mb-10 bg-blue-50/50 dark:bg-blue-950/20 p-6 rounded-2xl border border-blue-100 dark:border-blue-900/40">
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                             <h3 className="m-0 text-blue-800 text-lg font-bold flex items-center gap-2">
                                 <span>🧪</span> AI Workspace
                             </h3>
-                            {role === 'student' && (
+                            <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs text-blue-600 font-medium">🤖 AI Language:</span>
+                                    <select
+                                        value={aiLanguage}
+                                        onChange={(e) => setAiLanguage(e.target.value)}
+                                        className="text-xs px-2 py-1 border border-blue-200 rounded bg-white text-blue-800"
+                                    >
+                                        <option value="en">English</option>
+                                        <option value="hi">हिंदी</option>
+                                        <option value="mr">मराठी</option>
+                                    </select>
+                                </div>
+                                {role === 'student' && (
                                 <div className="flex flex-wrap gap-2 items-center w-full sm:w-auto">
                                     <button
                                         type="button"
@@ -329,7 +343,8 @@ function Resources() {
                                 </div>
                             )}
                         </div>
-                        <div className="mb-3 text-xs text-blue-600 bg-blue-100/50 p-2 rounded-lg">
+                    </div>
+                        <div className="mb-3 text-xs text-blue-600 dark:text-blue-200 bg-blue-100/50 dark:bg-blue-950/20 p-2 rounded-lg">
                             💡 <strong>Supported files:</strong> PDF, DOCX, DOC, TXT, RTF, ODT, PPT, PPTX, XLS, XLSX, MP3, WAV, M4A, AAC, OGG • Click "Use for AI" to extract text automatically
                         </div>
                         <textarea
@@ -337,8 +352,8 @@ function Resources() {
                             onChange={(e) => setAiInputText(e.target.value)}
                             placeholder="Select a file below or paste text here to start AI generation..."
                             className={`w-full min-h-37.5 p-5 rounded-xl border transition-all resize-y shadow-inner outline-none font-sans text-base ${extractingFileId
-                                ? 'border-blue-300 bg-blue-50 text-blue-700 animate-pulse'
-                                : 'border-blue-200 bg-white text-gray-700 focus:ring-4 focus:ring-blue-100 focus:border-blue-400'
+                                ? 'border-blue-300 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20 text-blue-700 dark:text-blue-200 animate-pulse'
+                                : 'border-blue-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-100 focus:ring-4 focus:ring-blue-100 focus:border-blue-400'
                                 }`}
                             disabled={!!extractingFileId}
                         />
@@ -347,8 +362,8 @@ function Resources() {
 
                 {/* AI Results Section - Full Width Rectangle */}
                 {(loadingAI || summary || quiz || flashcards || aiError) && (
-                    <div className="mt-8 bg-linear-to-br from-slate-50 to-white rounded-2xl border border-blue-100 shadow-xl overflow-hidden animate-fade-in">
-                        <div className="p-6 border-b border-blue-50 flex justify-between items-center bg-white/50 backdrop-blur-sm">
+                    <div className="mt-8 bg-gradient-to-br from-slate-50 to-white dark:from-slate-900 dark:to-slate-950 rounded-2xl border border-blue-100 dark:border-blue-900/40 shadow-xl overflow-hidden animate-fade-in transition-colors">
+                        <div className="p-6 border-b border-blue-50 dark:border-blue-900/30 flex justify-between items-center bg-white/50 dark:bg-slate-900/40 backdrop-blur-sm">
                             <h3 className="m-0 text-[#1976d2] text-lg sm:text-xl font-bold flex items-center gap-2">
                                 <span className="text-xl">🤖</span> AI Tutor Result
                             </h3>
@@ -380,7 +395,7 @@ function Resources() {
                             )}
 
                             {aiError && (
-                                <div className="bg-red-50 text-red-600 p-6 rounded-xl border border-red-100 flex items-center gap-4">
+                                <div className="bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-200 p-6 rounded-xl border border-red-100 dark:border-red-900/40 flex items-center gap-4">
                                     <span className="text-2xl">⚠️</span>
                                     <div>
                                         <p className="font-bold m-0">AI Error</p>
@@ -392,10 +407,10 @@ function Resources() {
                             {!loadingAI && summary && typeof summary === 'string' && (
                                 <div className="animate-fade-in">
                                     <div className="flex items-center gap-3 mb-6">
-                                        <span className="bg-emerald-100 text-emerald-700 p-2 rounded-lg text-lg">📄</span>
-                                        <h4 className="m-0 text-gray-800 text-xl font-bold">Document Summary</h4>
+                                        <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-200 p-2 rounded-lg text-lg">📄</span>
+                                        <h4 className="m-0 text-gray-800 dark:text-slate-50 text-xl font-bold">Document Summary</h4>
                                     </div>
-                                    <div className="bg-white p-4 sm:p-8 rounded-2xl border border-gray-100 shadow-sm leading-relaxed text-gray-700 text-sm sm:text-lg whitespace-pre-wrap">
+                                    <div className="bg-white dark:bg-slate-900 p-4 sm:p-8 rounded-2xl border border-gray-100 dark:border-slate-800 shadow-sm leading-relaxed text-gray-700 dark:text-slate-200 text-sm sm:text-lg whitespace-pre-wrap">
                                         {summary}
                                     </div>
                                 </div>
@@ -404,18 +419,18 @@ function Resources() {
                             {!loadingAI && quiz && Array.isArray(quiz) && (
                                 <div className="animate-fade-in space-y-6">
                                     <div className="flex items-center gap-3 mb-6">
-                                        <span className="bg-amber-100 text-amber-700 p-2 rounded-lg text-lg">🎯</span>
-                                        <h4 className="m-0 text-gray-800 text-xl font-bold">Concept Check Quiz</h4>
+                                        <span className="bg-amber-100 text-amber-700 dark:bg-amber-950/20 dark:text-amber-200 p-2 rounded-lg text-lg">🎯</span>
+                                        <h4 className="m-0 text-gray-800 dark:text-slate-50 text-xl font-bold">Concept Check Quiz</h4>
                                     </div>
 
                                     {/* Interactive Quiz Questions */}
                                     {quiz.map((q, qIndex) => (
                                         <div
                                             key={qIndex}
-                                            className="p-4 border rounded-lg bg-white"
+                                            className="p-4 border rounded-lg bg-white dark:bg-slate-900 border-gray-100 dark:border-slate-800"
                                         >
                                             {/* Question */}
-                                            <p className="font-semibold mb-3">
+                                                <p className="font-semibold mb-3">
                                                 {qIndex + 1}. {q.question || q.q}
                                             </p>
 
@@ -426,12 +441,12 @@ function Resources() {
                                                     const isCorrect = oIndex === (q.correctAnswer || 0);
                                                     const isSelected = selected === oIndex;
 
-                                                    let bg = 'bg-gray-100 hover:bg-gray-200';
+                                                    let bg = 'bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700';
 
                                                     // Only show colors after submission
                                                     if (quizSubmitted) {
-                                                        if (isCorrect) bg = 'bg-green-200';
-                                                        else if (isSelected) bg = 'bg-red-200';
+                                                        if (isCorrect) bg = 'bg-green-200 dark:bg-green-950/30 dark:hover:bg-green-950/30';
+                                                        else if (isSelected) bg = 'bg-red-200 dark:bg-red-950/30 dark:hover:bg-red-950/30';
                                                     }
 
                                                     return (
@@ -502,11 +517,11 @@ function Resources() {
 
                 <div className="space-y-6 mt-12">
                     <div className="w-full">
-                        <h3 className="text-gray-800 font-bold mb-4 flex items-center gap-2 px-2">
+                        <h3 className="text-gray-800 dark:text-slate-50 font-bold mb-4 flex items-center gap-2 px-2">
                             <span>📂</span> Study Materials
                         </h3>
                         {files.length === 0 ? (
-                            <div className="text-center py-16 text-[#999] bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                            <div className="text-center py-16 text-[#999] dark:text-slate-400 bg-gray-50 dark:bg-slate-900 rounded-xl border-2 border-dashed border-gray-200 dark:border-slate-800">
                                 <span className="text-4xl block mb-2">📂</span>
                                 <p className="text-lg">No files uploaded yet.</p>
                                 {role === 'teacher' && <p>Click "Upload Study Material" to get started.</p>}
@@ -516,15 +531,15 @@ function Resources() {
                                 {files.map((file) => (
                                     <div
                                         key={file.id}
-                                        className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-6 bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all group"
+                                        className="flex flex-col sm:flex-row justify-between items-start sm:items-center p-6 bg-white dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm hover:shadow-md transition-all group"
                                     >
                                         <div className="flex items-center gap-4 flex-1 mb-4 sm:mb-0">
                                             <div className="text-4xl p-2 bg-blue-50 rounded-lg">📄</div>
-                                            <div className="flex-1 min-w-0">
-                                                <div className="font-bold text-gray-800 text-base sm:text-lg mb-1 group-hover:text-[#1976d2] transition-colors break-words">
+                                                <div className="flex-1 min-w-0">
+                                                <div className="font-bold text-gray-800 dark:text-slate-50 text-base sm:text-lg mb-1 group-hover:text-[#1976d2] transition-colors break-words">
                                                     {file.name}
                                                 </div>
-                                                <div className="text-[10px] sm:text-xs text-gray-500 uppercase tracking-wide truncate">
+                                                <div className="text-[10px] sm:text-xs text-gray-500 dark:text-slate-300 uppercase tracking-wide truncate">
                                                     By {file.uploadedByName || 'Unknown'} • {new Date(file.uploadedAt).toLocaleDateString()}
                                                 </div>
                                             </div>
@@ -553,24 +568,20 @@ function Resources() {
                                                 download
                                                 target="_blank"
                                                 rel="noopener noreferrer"
-                                                className="px-4 py-2 bg-gray-50 text-gray-600 no-underline rounded-lg text-sm font-semibold border border-gray-200 hover:bg-gray-100 transition-colors"
+                                                className="px-4 py-2 bg-gray-50 dark:bg-slate-800 text-gray-600 dark:text-slate-200 no-underline rounded-lg text-sm font-semibold border border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700 transition-colors"
                                             >
                                                 Download
                                             </a>
                                         </div>
                                     </div>
-                                ))}
+        ))}
                             </div>
                         )}
                     </div>
-
-
-
                 </div>
-
             </div>
         </div>
     );
 }
 
-export default Resources;
+export default Resources; 

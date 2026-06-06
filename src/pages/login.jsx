@@ -28,7 +28,7 @@ const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         <div className="mb-6 text-center">
           <p className="inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full bg-slate-900/80 border border-slate-700 text-slate-300">

@@ -1,5 +1,5 @@
 // [HACKATHON TIMELINE] STEP 8 (Hour 14) - Core "Magic" (Live Class & AI Real-time)
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 import { useParams, useNavigate } from "react-router-dom";
 
@@ -7,9 +7,19 @@ import { useAuth } from "../context/AuthContext";
 
 import { supabase } from "../lib/supabase";
 
+import { useTranslation } from 'react-i18next';
+
 import { aiService } from "../lib/ai";
+// import {
+//   generateArtifact,
+//   generatePersonalCapsule,
+//   getLiveSignals,
+//   getSttToken,
+//   moderateContent,
+// } from "../lib/aiWorkflows";
 
 import { startLiveTranscription } from "../lib/liveTranscription";
+import { startMultilingualLiveTranscription, getSupportedTranscriptionLanguages } from "../lib/multilingualLiveTranscription";
 
 import {
   startAudioRecording,
@@ -21,19 +31,8 @@ import {
 
 const JITSI_BASE = "https://meet.jit.si";
 
-function getMeetingRoomFromUrl(url) {
-  if (!url) return "";
-
-  try {
-    const path = new URL(url).pathname;
-
-    return path.replace(/^\/+|\/+$/g, "") || "";
-  } catch {
-    return url;
-  }
-}
-
 function LiveClass() {
+  const { t } = useTranslation();
   const { userData } = useAuth();
 
   const { id } = useParams(); // Group ID
@@ -54,6 +53,11 @@ function LiveClass() {
 
   const [transcriptionStatus, setTranscriptionStatus] = useState("Idle");
 
+  // Multilingual transcription state
+  const [transcriptionLanguage, setTranscriptionLanguage] = useState("en");
+  const [detectedLanguage, setDetectedLanguage] = useState("English");
+  const [supportedLanguages, setSupportedLanguages] = useState([]);
+
   // Intelligence State
 
   const [doubtText, setDoubtText] = useState("");
@@ -66,7 +70,17 @@ function LiveClass() {
 
   const [teachingCues, setTeachingCues] = useState([]);
 
-  const [aiSummary, setAiSummary] = useState("");
+  const [rescueActions, setRescueActions] = useState([]);
+  const [conceptDriftAlert, setConceptDriftAlert] = useState(null);
+  const [participationStats, setParticipationStats] = useState({
+    answered_polls: 0,
+    raised_doubts: 0,
+    chat_messages: 0,
+  });
+  const [adaptiveQuiz, setAdaptiveQuiz] = useState(null);
+  const [quizAnswers, setQuizAnswers] = useState({});
+  const [personalCapsule, setPersonalCapsule] = useState(null);
+  const [capsuleLoading, setCapsuleLoading] = useState(false);
 
   // Poll & Intel State
 
@@ -85,8 +99,25 @@ function LiveClass() {
   ]);
 
   const [aiInsight, setAiInsight] = useState(
-    "Students are showing slight confusion about the current concept. Consider a quick re-explanation of the core principle.",
+    "Class started. Monitoring student engagement and clarity in real-time.",
   );
+
+  // Sync state broadcast effect
+  useEffect(() => {
+    if (!isHostRef.current) return;
+
+    const timer = setTimeout(() => {
+      sendBroadcast("ai_update", {
+        confusionLevel,
+        topicClarity,
+        topic: currentTopic,
+        insight: aiInsight,
+        cues: teachingCues
+      });
+    }, 500); // Debounce broadcasts
+
+    return () => clearTimeout(timer);
+  }, [confusionLevel, topicClarity, currentTopic, aiInsight, teachingCues]);
 
   // Meeting Setup State
 
@@ -120,13 +151,17 @@ function LiveClass() {
 
   const [audioRecordingStatus, setAudioRecordingStatus] = useState("Idle"); // 'Recording', 'Uploading', 'Error', 'Idle'
 
-  const [recordingError, setRecordingError] = useState(null);
+  const [, setRecordingError] = useState(null);
 
   // Refs
 
   const recognitionRef = useRef(null);
 
   const transcriptBufferRef = useRef(""); // Buffer for AI processing
+
+  const transcriptDbBufferRef = useRef([]);
+
+  const transcriptDbFlushTimerRef = useRef(null);
 
   const isRecordingRef = useRef(false); // Track recording state for restarts
 
@@ -194,6 +229,88 @@ function LiveClass() {
       });
   };
 
+  const flushTranscriptBuffer = async () => {
+    if (!transcriptDbBufferRef.current.length || !currentLiveSessionIdRef.current) {
+      return;
+    }
+    const rows = [...transcriptDbBufferRef.current];
+    transcriptDbBufferRef.current = [];
+
+    const { error } = await supabase.from("transcript_chunks").insert(rows);
+    if (error) {
+      console.error("[LiveClass] Failed to persist transcript batch:", error);
+      transcriptDbBufferRef.current = [...rows, ...transcriptDbBufferRef.current].slice(
+        0,
+        30,
+      );
+    }
+  };
+
+  const queueTranscriptChunk = (chunkId, text) => {
+    if (!currentLiveSessionIdRef.current) return;
+    transcriptDbBufferRef.current.push({
+      id: chunkId,
+      session_id: currentLiveSessionIdRef.current,
+      group_id: id,
+      text,
+      created_by: userData?.id,
+    });
+    if (transcriptDbBufferRef.current.length >= 8) {
+      flushTranscriptBuffer();
+      return;
+    }
+    if (transcriptDbFlushTimerRef.current) {
+      clearTimeout(transcriptDbFlushTimerRef.current);
+    }
+    transcriptDbFlushTimerRef.current = setTimeout(flushTranscriptBuffer, 1200);
+  };
+
+  const requestAdaptiveQuiz = async () => {
+    if (!isHostRef.current || !transcript.trim()) return;
+    try {
+      const data = await generateArtifact({
+        group_id: id,
+        session_id: currentLiveSessionIdRef.current,
+        role: "teacher",
+        transcript_delta: transcript.slice(-6000),
+        artifact_type: "quiz_generation",
+        student_context: {
+          poll_responses: pollResponses,
+          confusion_level: confusionLevel,
+        },
+      });
+      const quiz = Array.isArray(data?.content) ? data.content : [];
+      setAdaptiveQuiz(quiz);
+      sendBroadcast("adaptive_quiz", { quiz });
+    } catch (err) {
+      console.error("[LiveClass] Adaptive quiz generation failed:", err);
+    }
+  };
+
+  const requestPersonalCapsule = async () => {
+    if (!transcript.trim()) return;
+    setCapsuleLoading(true);
+    try {
+      const data = await generatePersonalCapsule({
+        group_id: id,
+        session_id: currentLiveSessionIdRef.current,
+        role: "student",
+        transcript_delta: transcript.slice(-7000),
+        student_context: {
+          confusion_level: confusionLevel,
+          topic: currentTopic,
+          doubts_count: doubts.length,
+          minutes_available: 5,
+        },
+      });
+      setPersonalCapsule(data?.capsule || null);
+    } catch (err) {
+      console.error("[LiveClass] Personal capsule failed:", err);
+    } finally {
+      setCapsuleLoading(false);
+    }
+  };
+
   // Sync currentLiveSessionId to ref for use in broadcast listeners
 
   useEffect(() => {
@@ -211,6 +328,10 @@ function LiveClass() {
 
         cancelAudioRecording();
       }
+      if (transcriptDbFlushTimerRef.current) {
+        clearTimeout(transcriptDbFlushTimerRef.current);
+      }
+      flushTranscriptBuffer();
     };
   }, [isAudioRecording]);
 
@@ -273,7 +394,7 @@ function LiveClass() {
     if (!id || !currentLiveSessionId) return;
 
     const fetchDoubts = async () => {
-      const { data, error } = await supabase
+      const { data } = await supabase
 
         .from("doubts")
 
@@ -410,7 +531,16 @@ function LiveClass() {
             setConfusionLevel((prev) => {
               const newLevel = Math.min(100, prev + 10);
 
-              sendBroadcast("ai_update", { confusionLevel: newLevel });
+              // Also decrease clarity of the current topic if possible
+              setTopicClarity((prevClarity) => {
+                const next = [...prevClarity];
+                // Try to find the current topic or just the "most active" one (usually the one with lowest clarity or latest)
+                // For simplicity, we'll decrease the clarity of all currently "active" topics slightly
+                return next.map(t => ({
+                  ...t,
+                  clarity: Math.max(5, t.clarity - 8)
+                }));
+              });
 
               return newLevel;
             });
@@ -424,6 +554,12 @@ function LiveClass() {
       supabase.removeChannel(channel);
     };
   }, [id, role, currentLiveSessionId]);
+
+  // Initialize supported languages
+  useEffect(() => {
+    const languages = getSupportedTranscriptionLanguages();
+    setSupportedLanguages(languages);
+  }, []);
 
   // 0. Determine Host Status & Setup Sync Channel
 
@@ -490,6 +626,16 @@ function LiveClass() {
           setConfusionLevel(data.confusionLevel);
 
         if (data.topicClarity) setTopicClarity(data.topicClarity);
+        if (data.topic) setCurrentTopic(data.topic);
+        if (data.insight) setAiInsight(data.insight);
+        if (data.cues) setTeachingCues(data.cues);
+        if (data.rescueActions) setRescueActions(data.rescueActions);
+        if (data.conceptDrift) {
+          setConceptDriftAlert({
+            detected: true,
+            reason: data.conceptDriftReason || "Concept drift detected.",
+          });
+        }
       })
 
       .on("broadcast", { event: "poll_launched" }, (payload) => {
@@ -498,7 +644,7 @@ function LiveClass() {
         setPollResponses([]);
       })
 
-      .on("broadcast", { event: "live_session_started" }, (payload) => {
+      .on("broadcast", { event: "live_session_started" }, () => {
         fetchActiveLiveSessions();
       })
 
@@ -512,6 +658,10 @@ function LiveClass() {
         const response = payload.payload;
 
         setPollResponses((prev) => [...prev, response]);
+        setParticipationStats((prev) => ({
+          ...prev,
+          answered_polls: prev.answered_polls + 1,
+        }));
 
         if (isHostRef.current) {
           setConfusionLevel((prev) => {
@@ -533,6 +683,14 @@ function LiveClass() {
 
       .on("broadcast", { event: "poll_closed" }, () => {
         setActivePoll(null);
+      })
+
+      .on("broadcast", { event: "adaptive_quiz" }, (payload) => {
+        const quiz = payload?.payload?.quiz;
+        if (Array.isArray(quiz)) {
+          setAdaptiveQuiz(quiz);
+          setQuizAnswers({});
+        }
       })
 
       .on("broadcast", { event: "doubt_raised" }, (msg) => {
@@ -675,214 +833,139 @@ function LiveClass() {
     if (!isHostRef.current || !isRecording) return;
 
     let controller = null;
+    let cancelled = false;
 
-    const apiKey = import.meta.env.VITE_ASSEMBLYAI_API_KEY;
+    const bootTranscription = async () => {
+      let apiKey = null;
+      try {
+        apiKey = await getSttToken({ group_id: id, expires_in: 900 });
+      } catch (tokenErr) {
+        console.warn("[LiveClass] Failed to mint STT token, using fallback key:", tokenErr);
+      }
 
-    startLiveTranscription(apiKey, {
-      onStatus: (status) => {
-        transcriptionStatusRef.current = status;
+      if (!apiKey) {
+        apiKey = import.meta.env.VITE_ASSEMBLYAI_API_KEY;
+      }
+      if (!apiKey) {
+        setTranscriptionStatus("Error");
+        return;
+      }
 
-        setTranscriptionStatus(status);
-
-        // Broadcast status to students
-
-        console.log("[Teacher] Broadcasting status:", status);
-
-        sendBroadcast("transcription_status", { status });
-      },
-
-      onPartial: (text) => {
-        interimTranscriptRef.current = text || "";
-
-        setInterimTranscript(text);
-      },
-
-      onFinal: (text) => {
-        interimTranscriptRef.current = "";
-
-        setInterimTranscript("");
-
-        const finalText = text && text.trim() ? text.trim() : "";
-
-        if (!finalText) return;
-
-        // Avoid duplicate: check if this final text was already added
-
-        const lastFinal = lastFinalTextRef.current.toLowerCase().trim();
-
-        const currentFinal = finalText.toLowerCase().trim();
-
-        // Improved duplicate check: strip punctuation/spaces for comparison
-
-        const normalize = (s) =>
-          s
-            .replace(/[^\w\s]/g, "")
-            .replace(/\s+/g, " ")
-            .trim();
-
-        const lastNormalized = normalize(lastFinal);
-
-        const currentNormalized = normalize(currentFinal);
-
-        if (lastNormalized === currentNormalized && lastNormalized.length > 0) {
-          console.log(
-            "[Teacher] Skipping duplicate/formatted version:",
-            finalText.substring(0, 50),
-          );
-
-          return;
+      startMultilingualLiveTranscription(apiKey, {
+        language: transcriptionLanguage,
+        onStatus: (status) => {
+          transcriptionStatusRef.current = status;
+          setTranscriptionStatus(status);
+          console.log("[Teacher] Broadcasting status:", status);
+          sendBroadcast("transcription_status", { status });
+        },
+        onPartial: (text) => {
+          setInterimTranscript(text);
+          sendBroadcast("transcript_partial", { text });
+        },
+        onFinal: (text) => {
+          setTranscript((prev) => prev + " " + text);
+          setInterimTranscript("");
+          sendBroadcast("transcript_final", { text });
+        },
+        onLanguageDetected: (language) => {
+          setDetectedLanguage(language);
+          sendBroadcast("transcription_language", { language });
         }
-
-        const cleanChunk = finalText + " ";
-        const chunkId = crypto.randomUUID();
-
-        setTranscript((prev) => prev + cleanChunk);
-
-        transcriptBufferRef.current += cleanChunk;
-
-        lastFinalTextRef.current = finalText;
-
-        console.log(
-          "[Teacher] Broadcasting transcript:",
-          cleanChunk.substring(0, 50),
-        );
-
-        sendBroadcast("transcript_chunk", { id: chunkId, text: cleanChunk });
-
-        // Save to database for reliable delivery to students (with error handling)
-
-        if (currentLiveSessionId) {
-          (async () => {
-            const { error } = await supabase
-
-              .from("transcript_chunks")
-
-              .insert({
-                id: chunkId,
-
-                session_id: currentLiveSessionId,
-
-                group_id: id,
-
-                text: cleanChunk,
-
-                created_by: userData?.id,
-              });
-
-            if (error) {
-              console.error(
-                "[Teacher] Failed to save transcript chunk to DB:",
-                error,
-              );
-            } else {
-              console.log(
-                "[Teacher] Transcript chunk saved to DB:",
-                cleanChunk.substring(0, 30),
-              );
-            }
-          })();
-        }
-
-        if (transcriptBufferRef.current.length > 500) {
-          analyzeTranscript(transcriptBufferRef.current);
-
-          transcriptBufferRef.current = "";
-        }
-      },
-    })
+      })
       .then((c) => {
+        if (cancelled) return;
         controller = c;
-
         recognitionRef.current = {
           stop: () => {
             isRecordingRef.current = false;
-
             controller?.stop();
           },
         };
       })
-
       .catch((err) => {
         console.error("[LiveClass] Transcription start failed:", err);
-
         setTranscriptionStatus("Error");
-
         setIsRecording(false);
-
         isRecordingRef.current = false;
       });
+    };
+
+    bootTranscription();
 
     return () => {
+      cancelled = true;
       isRecordingRef.current = false;
 
       controller?.stop();
     };
-  }, [isHost, isRecording]);
+  }, [id, isHost, isRecording]);
 
   // 2. AI Analysis Function
 
   const analyzeTranscript = async (textSegment) => {
-    console.log("Analyzing transcript segment...");
+    if (!textSegment?.trim()) return;
+    console.log("Analyzing transcript segment with live-signals workflow...");
+    try {
+      const signals = await getLiveSignals({
+        group_id: id,
+        session_id: currentLiveSessionIdRef.current,
+        role: isHostRef.current ? "teacher" : "student",
+        transcript_delta: textSegment,
+        student_context: {
+          current_topic: currentTopic,
+          confusion_level: confusionLevel,
+          poll_responses: pollResponses.length,
+          doubts: doubts.length,
+        },
+      });
 
-    // a) Generate Cues
+      const topic = signals?.topic || currentTopic;
+      const cues = Array.isArray(signals?.teaching_cues)
+        ? signals.teaching_cues.filter(Boolean).slice(0, 3)
+        : [];
+      const rescue = Array.isArray(signals?.rescue_actions)
+        ? signals.rescue_actions.filter(Boolean).slice(0, 3)
+        : [];
+      const insight = signals?.insight || aiInsight;
+      const nextConfusion = Number.isFinite(signals?.confusion_score)
+        ? signals.confusion_score
+        : confusionLevel;
 
-    const cuePrompt = `Analyze this class transcript segment: "${textSegment}". 
-
-
-
-
-
-
-
-        Provide 2 short teaching cues or questions the teacher should ask to check understanding.`;
-
-    const cues = await aiService.generateSummary(cuePrompt);
-
-    let newTopic = currentTopic;
-
-    // b) Detect Topic
-
-    if (currentTopic === "General Discussion") {
-      const topic = await aiService.generateSummary(
-        `Identify the main academic topic in 3 words: "${textSegment}"`,
+      setCurrentTopic(topic);
+      setTeachingCues(cues);
+      setRescueActions(rescue);
+      setAiInsight(insight);
+      setConfusionLevel(Math.max(0, Math.min(100, nextConfusion)));
+      setParticipationStats((prev) => ({
+        answered_polls:
+          prev.answered_polls + Number(signals?.participation_delta?.answered_polls || 0),
+        raised_doubts:
+          prev.raised_doubts + Number(signals?.participation_delta?.raised_doubts || 0),
+        chat_messages:
+          prev.chat_messages + Number(signals?.participation_delta?.chat_messages || 0),
+      }));
+      setConceptDriftAlert(
+        signals?.concept_drift
+          ? {
+              detected: true,
+              reason: signals?.drift_reason || "Concept drift detected by AI.",
+            }
+          : null,
       );
 
-      if (topic) newTopic = topic.replace(/\.$/, "");
-    }
-
-    if (cues || newTopic !== currentTopic) {
-      const cueList = cues
-        ? cues
-          .split("\n")
-          .filter((line) => line.length > 5)
-          .slice(0, 2)
-        : teachingCues;
-
-      // Generate Pedagogical Insight
-
-      const insightPrompt = `Based on these cues: "${cueList.join(", ")}", provide a 1-sentence pedagogical suggestion for the teacher to improve student clarity.`;
-
-      const insight = await aiService.generateSummary(insightPrompt);
-
-      setTeachingCues(cueList);
-
-      setCurrentTopic(newTopic);
-
-      setAiInsight(insight);
-
-      // Sync AI state with students
-
       sendBroadcast("ai_update", {
-        cues: cueList,
-
-        topic: newTopic,
-
+        cues,
+        topic,
         insight,
-
-        confusionLevel,
-
+        confusionLevel: nextConfusion,
         topicClarity,
+        rescueActions: rescue,
+        conceptDrift: signals?.concept_drift || false,
+        conceptDriftReason: signals?.drift_reason || "",
       });
+    } catch (err) {
+      console.error("[LiveClass] live-signals analysis failed:", err);
     }
   };
 
@@ -959,11 +1042,6 @@ function LiveClass() {
     isRecordingRef.current = true;
   };
 
-  const handleJoinMeeting = () => {
-    setJoinUrlInput("");
-    setModal("join");
-  };
-
   const handleJoinWithUrl = async () => {
     const trimmed = joinUrlInput.trim();
 
@@ -977,8 +1055,6 @@ function LiveClass() {
 
     try {
       // Extract room ID from URL and find the live session
-
-      const roomId = url.split("/").pop();
 
       const { data: session } = await supabase
 
@@ -1261,6 +1337,10 @@ function LiveClass() {
     };
 
     setActivePoll(null); // Close for student
+    setParticipationStats((prev) => ({
+      ...prev,
+      answered_polls: prev.answered_polls + 1,
+    }));
 
     sendBroadcast("poll_response", response);
   };
@@ -1283,7 +1363,12 @@ function LiveClass() {
 
       try {
         const summary = await aiService.generateSummary(
-          `Summarize these class notes in 3–5 short bullet points. Keep it clear for students.\n\n${transcript}`,
+          `Summarize these class notes in 3-5 short bullet points. Keep it clear for students.\n\n${transcript}`,
+          {
+            group_id: id,
+            session_id: currentLiveSessionIdRef.current,
+            role: "student",
+          },
         );
 
         if (summary) setLiveSummary(summary);
@@ -1297,7 +1382,7 @@ function LiveClass() {
     return () => {
       if (summaryTimeoutRef.current) clearTimeout(summaryTimeoutRef.current);
     };
-  }, [role, transcript]);
+  }, [role, transcript, id]);
 
   const handleRaiseDoubt = async () => {
     if (!doubtText.trim() || !currentLiveSessionId) return;
@@ -1322,9 +1407,25 @@ function LiveClass() {
     console.log("[Doubt] Raising doubt:", doubtToAdd.text);
 
     try {
+      const moderation = await moderateContent({
+        group_id: id,
+        session_id: currentLiveSessionId,
+        channel: "doubt",
+        text: doubtToAdd.text,
+      });
+      if (!moderation?.approved) {
+        alert("This doubt message was blocked by safety filters.");
+        return;
+      }
+      doubtToAdd.text = moderation?.sanitized_text || doubtToAdd.text;
+
       // Optimistic update
 
       setDoubts((prev) => [doubtToAdd, ...prev]);
+      setParticipationStats((prev) => ({
+        ...prev,
+        raised_doubts: prev.raised_doubts + 1,
+      }));
 
       setDoubtText("");
 
@@ -1382,6 +1483,7 @@ function LiveClass() {
     lastFinalTextRef.current = ""; // Reset duplicate tracking
 
     setIsRecording(false);
+    await flushTranscriptBuffer();
 
     // Stop audio recording for teacher
 
@@ -1448,6 +1550,11 @@ function LiveClass() {
 
     const finalSummary = await aiService.generateSummary(
       transcript || "No transcript available.",
+      {
+        group_id: id,
+        session_id: currentLiveSessionId,
+        role: "teacher",
+      },
     );
 
     console.log("Summary generated:", finalSummary?.substring(0, 100));
@@ -1534,7 +1641,7 @@ function LiveClass() {
 
   if (!meetingUrl) {
     return (
-      <div className="flex-1 p-4 overflow-hidden bg-slate-50">
+      <div className="flex-1 p-4 overflow-hidden bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors">
         <div className="flex flex-col items-center justify-center min-h-[calc(100vh-100px)] gap-6 animate-fade-in">
           <h1 className="m-0 text-4xl text-[#1976d2] font-bold text-center">
             EduSense Live Intelligence
@@ -1548,7 +1655,7 @@ function LiveClass() {
           {role === "teacher" ? (
             <div className="flex gap-6 mt-8">
               <button
-                className="px-8 py-4 text-lg font-semibold border-none rounded-xl cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl bg-linear-to-r from-blue-600 to-blue-500 text-white"
+                className="px-8 py-4 text-lg font-semibold border-none rounded-xl cursor-pointer transition-all hover:-translate-y-1 hover:shadow-xl bg-gradient-to-r from-blue-600 to-blue-500 text-white"
                 onClick={handleCreateMeeting}
               >
                 Start New Live Class
@@ -1558,14 +1665,14 @@ function LiveClass() {
             <div className="w-full max-w-4xl mt-8">
               {activeLiveSessions.length > 0 ? (
                 <div className="space-y-4">
-                  <h2 className="text-xl font-bold text-gray-800 mb-4">
+                  <h2 className="text-xl font-bold text-gray-800 dark:text-slate-50 mb-4">
                     Active Live Classes
                   </h2>
 
                   {activeLiveSessions.map((session) => (
                     <div
                       key={session.id}
-                      className="bg-white rounded-2xl p-6 shadow-lg border-l-4 border-blue-500 hover:shadow-xl transition-all"
+                      className="bg-white dark:bg-slate-900 rounded-2xl p-6 shadow-lg border-l-4 border-blue-500 hover:shadow-xl transition-all"
                     >
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
@@ -1577,17 +1684,17 @@ function LiveClass() {
                             </span>
                           </div>
 
-                          <h3 className="text-xl font-bold text-gray-900 mb-1">
+                          <h3 className="text-xl font-bold text-gray-900 dark:text-slate-50 mb-1">
                             {session.topic}
                           </h3>
 
                           {session.description && (
-                            <p className="text-gray-600 text-sm mb-2">
+                            <p className="text-gray-600 dark:text-slate-300 text-sm mb-2">
                               {session.description}
                             </p>
                           )}
 
-                          <div className="flex items-center gap-4 text-sm text-gray-500">
+                          <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-slate-300">
                             <span className="flex items-center gap-1">
                               <svg
                                 className="w-4 h-4"
@@ -1626,7 +1733,7 @@ function LiveClass() {
 
                         <button
                           onClick={() => handleJoinSessionClick(session)}
-                          className="ml-4 px-6 py-3 bg-linear-to-r from-green-500 to-green-600 text-white font-bold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2"
+                        className="ml-4 px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center gap-2"
                         >
                           <svg
                             className="w-5 h-5"
@@ -1649,9 +1756,9 @@ function LiveClass() {
                 </div>
               ) : (
                 <div className="text-center py-12">
-                  <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <div className="w-20 h-20 bg-gray-100 dark:bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
                     <svg
-                      className="w-10 h-10 text-gray-400"
+                      className="w-10 h-10 text-gray-400 dark:text-slate-400"
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
@@ -1665,11 +1772,11 @@ function LiveClass() {
                     </svg>
                   </div>
 
-                  <h3 className="text-lg font-semibold text-gray-700 mb-2">
+                  <h3 className="text-lg font-semibold text-gray-700 dark:text-slate-200 mb-2">
                     No Active Live Classes
                   </h3>
 
-                  <p className="text-gray-500">
+                  <p className="text-gray-500 dark:text-slate-300">
                     When your teacher starts a live class, it will appear here
                     automatically.
                   </p>
@@ -1689,7 +1796,7 @@ function LiveClass() {
             onClick={() => setModal(null)}
           >
             <div
-              className="bg-white rounded-2xl p-8 min-w-112.5 shadow-2xl"
+              className="bg-white dark:bg-slate-900 rounded-2xl p-8 min-w-112.5 shadow-2xl text-slate-900 dark:text-slate-50 transition-colors"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-[#1976d2] font-bold text-2xl mb-4">
@@ -1701,11 +1808,11 @@ function LiveClass() {
                   type="text"
                   readOnly
                   value={createdMeetingUrl}
-                  className="flex-1 p-4 border bg-gray-50 rounded-xl"
+                  className="flex-1 p-4 border bg-gray-50 dark:bg-slate-800 dark:border-slate-700 rounded-xl"
                 />
 
                 <button
-                  className="px-6 font-bold bg-gray-100 rounded-xl"
+                  className="px-6 font-bold bg-gray-100 dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-xl transition-colors"
                   onClick={handleCopyMeetingUrl}
                 >
                   Copy
@@ -1730,7 +1837,7 @@ function LiveClass() {
             onClick={() => setModal(null)}
           >
             <div
-              className="bg-white rounded-2xl p-8 min-w-112.5 shadow-2xl"
+              className="bg-white dark:bg-slate-900 rounded-2xl p-8 min-w-112.5 shadow-2xl text-slate-900 dark:text-slate-50 transition-colors"
               onClick={(e) => e.stopPropagation()}
             >
               <h3 className="text-[#1976d2] font-bold text-2xl mb-4">
@@ -1742,7 +1849,7 @@ function LiveClass() {
                 value={joinUrlInput}
                 onChange={(e) => setJoinUrlInput(e.target.value)}
                 placeholder="Enter Link..."
-                className="w-full p-4 border rounded-xl mb-6"
+                className="w-full p-4 border rounded-xl mb-6 bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 transition-colors"
               />
 
               <button
@@ -1763,7 +1870,7 @@ function LiveClass() {
             onClick={() => setModal(null)}
           >
             <div
-              className="bg-white rounded-2xl p-8 min-w-112.5 max-w-125 shadow-2xl"
+              className="bg-white dark:bg-slate-900 rounded-2xl p-8 min-w-112.5 max-w-125 shadow-2xl text-slate-900 dark:text-slate-50 transition-colors"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center gap-3 mb-6">
@@ -1845,14 +1952,14 @@ function LiveClass() {
 
               <div className="flex gap-3 mt-6">
                 <button
-                  className="flex-1 p-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-all"
+                  className="flex-1 p-4 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-slate-700 transition-all"
                   onClick={() => setModal(null)}
                 >
                   Cancel
                 </button>
 
                 <button
-                  className="flex-1 p-4 bg-linear-to-r from-blue-600 to-blue-500 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex-1 p-4 bg-gradient-to-r from-blue-600 to-blue-500 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                   onClick={handleSetupClass}
                   disabled={!classTopic.trim()}
                 >
@@ -1871,7 +1978,7 @@ function LiveClass() {
             onClick={() => setModal(null)}
           >
             <div
-              className="bg-white rounded-2xl p-8 min-w-100 max-w-112.5 shadow-2xl"
+              className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 w-[95%] sm:min-w-100 sm:max-w-112.5 shadow-2xl text-slate-900 dark:text-slate-50 transition-colors"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center gap-3 mb-6">
@@ -1892,18 +1999,18 @@ function LiveClass() {
                 </div>
 
                 <div>
-                  <h3 className="text-gray-900 font-bold text-xl">
+                <h3 className="text-gray-900 dark:text-slate-50 font-bold text-xl">
                     Join Class
                   </h3>
 
-                  <p className="text-sm text-gray-500">
+                <p className="text-sm text-gray-500 dark:text-slate-300">
                     {selectedSession.topic}
                   </p>
                 </div>
               </div>
 
               <div className="mb-6">
-                <label className="block text-sm font-bold text-gray-700 mb-2">
+                <label className="block text-sm font-bold text-gray-700 dark:text-slate-200 mb-2">
                   Enter Your Roll Number *
                 </label>
 
@@ -1912,25 +2019,25 @@ function LiveClass() {
                   value={rollNumber}
                   onChange={(e) => setRollNumber(e.target.value)}
                   placeholder="e.g., R001, 2023001"
-                  className="w-full p-4 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-lg"
+                  className="w-full p-4 border border-gray-200 dark:border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500/50 focus:border-transparent text-lg bg-white dark:bg-slate-800 transition-colors"
                   autoFocus
                 />
 
-                <p className="text-xs text-gray-500 mt-2">
+                <p className="text-xs text-gray-500 dark:text-slate-300 mt-2">
                   Your roll number will be recorded for attendance tracking.
                 </p>
               </div>
 
               <div className="flex gap-3">
                 <button
-                  className="flex-1 p-4 bg-gray-100 text-gray-700 font-bold rounded-xl hover:bg-gray-200 transition-all"
+                  className="flex-1 p-4 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-200 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-slate-700 transition-all"
                   onClick={() => setModal(null)}
                 >
                   Cancel
                 </button>
 
                 <button
-                  className="flex-1 p-4 bg-linear-to-r from-green-500 to-green-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 p-4 bg-gradient-to-r from-green-500 to-green-600 text-white font-bold rounded-xl hover:shadow-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   onClick={handleJoinWithRollNumber}
                   disabled={!rollNumber.trim()}
                 >
@@ -1960,21 +2067,52 @@ function LiveClass() {
   // Active Meeting Render
 
   return (
-    <div className="flex-1 p-4 overflow-hidden h-[calc(100vh-80px)] bg-slate-100">
+    <div className="flex-1 p-2 sm:p-4 overflow-y-auto lg:overflow-hidden h-auto lg:h-[calc(100vh-80px)] bg-slate-100 dark:bg-slate-950 text-slate-900 dark:text-slate-50 transition-colors">
       {/* Header */}
 
-      <div className="mb-4 bg-white px-6 py-3 rounded-xl shadow-sm flex items-center justify-between">
+      <div className="mb-4 bg-white dark:bg-slate-900 px-4 sm:px-6 py-3 rounded-xl shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b-4 border-blue-500/10 dark:border-blue-500/20 transition-colors">
         <div className="flex items-center gap-3">
-          <span className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider animate-pulse">
-            {isRecording ? "🔴 Live & Rec" : "Live"}
-          </span>
+          <div className="relative">
+            <span className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-red-500 rounded-full animate-ping absolute -left-0.5 -top-0.5 opacity-75"></span>
+              <span className="w-2 h-2 bg-red-500 rounded-full relative"></span>
+              {isRecording ? t('liveClass.recording') : t('liveClass.sessionActive')}
+            </span>
+          </div>
 
-          <h2 className="text-lg font-bold text-gray-800 m-0">
-            Topic: <span className="text-[#1976d2]">{currentTopic}</span>
+          <h2 className="text-lg font-bold text-gray-800 dark:text-slate-50 m-0">
+            Topic: <span className="text-[#1976d2] bg-blue-50 dark:bg-blue-950/20 px-2 py-0.5 rounded-md">{currentTopic}</span>
           </h2>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <LanguageSwitcher />
+        </div>
+
+        <div className="flex items-center gap-2 sm:gap-4 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+          {/* Transcription Language Selector */}
+          {role === "teacher" && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-600 dark:text-gray-300">🎤 Speech:</span>
+              <select
+                value={transcriptionLanguage}
+                onChange={(e) => setTranscriptionLanguage(e.target.value)}
+                className="text-xs px-2 py-1 border border-gray-300 dark:border-gray-600 rounded bg-white dark:bg-slate-800 text-gray-800 dark:text-gray-200"
+              >
+                {supportedLanguages.map((lang) => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.name}
+                  </option>
+                ))}
+              </select>
+              {detectedLanguage && (
+                <span className="text-xs text-green-600 dark:text-green-400">
+                  ({detectedLanguage})
+                </span>
+              )}
+            </div>
+          )}
+          
           {role === "teacher" ? (
             <>
               {/* Audio Recording Status Indicator */}
@@ -2028,10 +2166,10 @@ function LiveClass() {
         </div>
       </div>
 
-      <div className="flex gap-4 h-[calc(100%-70px)]">
+      <div className="flex flex-col lg:flex-row gap-4 h-auto lg:h-[calc(100%-70px)]">
         {/* Left: Video */}
 
-        <div className="flex-2 flex flex-col h-full min-w-0 bg-black rounded-2xl overflow-hidden shadow-lg relative ring-4 ring-white">
+        <div className="flex-none lg:flex-2 flex flex-col h-[30vh] sm:h-[40vh] lg:h-full min-w-0 bg-black rounded-2xl overflow-hidden shadow-lg relative ring-4 ring-white">
           <iframe
             src={meetingUrl}
             allow="camera; microphone; fullscreen; speaker; speaker-selection; display-capture; autoplay"
@@ -2042,14 +2180,14 @@ function LiveClass() {
 
         {/* Right: Teacher = full dashboard; Student = transcript + summary + doubts only */}
 
-        <div className="flex-1 flex flex-col gap-4 overflow-y-auto min-w-95 pr-1 pb-4 no-scrollbar">
+        <div className="flex-1 flex flex-col gap-4 overflow-y-visible lg:overflow-y-auto min-w-0 lg:min-w-95 pr-1 pb-4 no-scrollbar">
           {role === "teacher" ? (
             /* ---------- TEACHER: Full Intelligence Dashboard (unchanged) ---------- */
 
             <>
-              <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100">
+              <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-sm border border-gray-100 dark:border-slate-800 transition-colors">
                 <div className="flex items-center justify-between mb-4">
-                  <h3 className="m-0 text-gray-900 text-lg font-bold flex items-center gap-2">
+                  <h3 className="m-0 text-gray-900 dark:text-slate-50 text-lg font-bold flex items-center gap-2">
                     <span className="p-1.5 bg-blue-100 rounded-lg text-blue-600">
                       📊
                     </span>{" "}
@@ -2075,48 +2213,61 @@ function LiveClass() {
                 </div>
 
                 <div className="mb-6">
-                  <div className="flex justify-between items-end mb-2">
-                    <span className="text-sm font-bold text-gray-700">
+                  <div className="flex justify-between items-end mb-3">
+                    <span className="text-sm font-black text-gray-700 uppercase tracking-tight">
                       Confusion Meter
                     </span>
 
                     <span
-                      className={`text-xs font-bold uppercase ${confusionLevel > 50 ? "text-red-500" : confusionLevel > 20 ? "text-orange-500" : "text-green-500"}`}
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-tighter ${confusionLevel > 50 ? "bg-red-100 text-red-600 animate-pulse" : confusionLevel > 20 ? "bg-orange-100 text-orange-600" : "bg-green-100 text-green-600"}`}
                     >
                       {confusionLevel > 50
                         ? "High Confusion"
                         : confusionLevel > 20
                           ? "Caution"
-                          : "Low Confusion"}
+                          : "Stable Flow"}
                     </span>
                   </div>
 
-                  <div className="flex gap-1.5 h-12 items-end">
+                  <div className="flex gap-2 h-16 items-end bg-gray-50/50 p-2 rounded-xl border border-gray-100">
                     {[1, 2, 3, 4, 5].map((bar) => {
-                      const isActive = confusionLevel / 20 >= bar;
+                      const isActive = confusionLevel / 20 >= (bar - 0.5); // More sensitive
 
-                      let color = "bg-gray-100";
+                      let color = "bg-gray-200";
+                      let shadow = "";
 
                       if (isActive) {
-                        if (bar <= 2) color = "bg-green-400";
-                        else if (bar <= 4) color = "bg-orange-400";
-                        else color = "bg-red-400";
+                        if (bar <= 2) {
+                          color = "bg-gradient-to-t from-green-500 to-green-300";
+                          shadow = "shadow-[0_-4px_10px_rgba(34,197,94,0.3)]";
+                        } else if (bar <= 4) {
+                          color = "bg-gradient-to-t from-orange-500 to-orange-300";
+                          shadow = "shadow-[0_-4px_10px_rgba(249,115,22,0.3)]";
+                        } else {
+                          color = "bg-gradient-to-t from-red-600 to-red-400";
+                          shadow = "shadow-[0_-4px_10px_rgba(220,38,38,0.4)]";
+                        }
                       }
 
                       return (
                         <div
                           key={bar}
-                          className={`flex-1 rounded-t-md transition-all duration-500 ${color}`}
-                          style={{ height: isActive ? `${20 * bar}%` : "15%" }}
+                          className={`flex-1 rounded-t-lg transition-all duration-700 ease-out ${color} ${shadow} ${isActive && confusionLevel > 60 ? 'animate-bounce-slow' : ''}`}
+                          style={{
+                            height: isActive ? `${25 + (15 * bar)}%` : "12%",
+                            opacity: isActive ? 1 : 0.4
+                          }}
                         ></div>
                       );
                     })}
                   </div>
 
-                  <div className="mt-2 text-center">
-                    <span className="text-2xl font-black text-gray-800">
+                  <div className="mt-3 flex items-center justify-center gap-2">
+                    <div className="h-1 w-8 bg-gray-100 rounded-full"></div>
+                    <span className="text-2xl font-black text-gray-800 tabular-nums">
                       {confusionLevel}%
                     </span>
+                    <div className="h-1 w-8 bg-gray-100 rounded-full"></div>
                   </div>
                 </div>
 
@@ -2164,22 +2315,52 @@ function LiveClass() {
                   </div>
                   <div className="bg-gray-50 p-3 rounded-xl border border-gray-100">
                     <p className="m-0 text-[10px] font-bold text-gray-400 uppercase mb-1">
-                      Response Delay
+                      Participation Signals
                     </p>
                     <p className="m-0 text-base font-bold text-gray-800">
-                      1.2s
+                      {participationStats.answered_polls + participationStats.raised_doubts}
                     </p>
                   </div>
                 </div>
+                {conceptDriftAlert?.detected && (
+                  <div className="mb-4 p-3 rounded-xl border border-amber-200 bg-amber-50">
+                    <p className="m-0 text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1">
+                      Concept Drift Alert
+                    </p>
+                    <p className="m-0 text-sm text-amber-900">{conceptDriftAlert.reason}</p>
+                  </div>
+                )}
+                {rescueActions.length > 0 && (
+                  <div className="mb-4 p-3 rounded-xl border border-indigo-100 bg-indigo-50/70">
+                    <p className="m-0 text-[10px] font-bold uppercase tracking-wider text-indigo-700 mb-2">
+                      Confusion Spike Rescue
+                    </p>
+                    <ul className="m-0 pl-4 space-y-1">
+                      {rescueActions.map((action, idx) => (
+                        <li key={idx} className="text-xs text-indigo-900 font-medium">
+                          {action}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
                 {isHost && (
                   <div className="mt-4">
                     {!activePoll ? (
-                      <button
-                        onClick={handleLaunchPoll}
-                        className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-200 transition-all flex items-center justify-center gap-2"
-                      >
-                        <span>🚀</span> Launch Quick Poll
-                      </button>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        <button
+                          onClick={handleLaunchPoll}
+                          className="w-full py-3.5 bg-green-500 hover:bg-green-600 text-white font-bold rounded-xl shadow-lg shadow-green-200 transition-all flex items-center justify-center gap-2"
+                        >
+                          <span>🚀</span> Launch Quick Poll
+                        </button>
+                        <button
+                          onClick={requestAdaptiveQuiz}
+                          className="w-full py-3.5 bg-violet-600 hover:bg-violet-700 text-white font-bold rounded-xl shadow-lg shadow-violet-200 transition-all flex items-center justify-center gap-2"
+                        >
+                          <span>🧠</span> Adaptive Poll-to-Quiz
+                        </button>
+                      </div>
                     ) : (
                       <div className="bg-blue-50/80 rounded-2xl p-4 border border-blue-100 animate-fade-in">
                         <div className="flex justify-between items-center mb-4">
@@ -2339,6 +2520,29 @@ function LiveClass() {
                   </div>
                 </details>
               </div>
+              {Array.isArray(adaptiveQuiz) && adaptiveQuiz.length > 0 && (
+                <div className="bg-violet-50/70 rounded-2xl p-4 shadow-sm border border-violet-100">
+                  <h4 className="m-0 text-violet-900 text-sm font-bold uppercase tracking-wider mb-3">
+                    Adaptive Quiz (Judge Demo Wow)
+                  </h4>
+                  <div className="space-y-3 max-h-48 overflow-y-auto pr-1">
+                    {adaptiveQuiz.slice(0, 3).map((q, idx) => (
+                      <div key={idx} className="bg-white rounded-xl border border-violet-100 p-3">
+                        <p className="m-0 text-xs font-semibold text-gray-800 mb-2">
+                          {idx + 1}. {q.question}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(q.options || []).map((opt, oIdx) => (
+                            <div key={oIdx} className="text-[11px] bg-violet-50 rounded px-2 py-1 text-violet-900">
+                              {String.fromCharCode(65 + oIdx)}. {opt}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex-1 flex flex-col min-h-50">
                 <div className="flex items-center justify-between mb-4">
                   <h4 className="m-0 text-gray-800 text-sm font-bold uppercase tracking-wider">
@@ -2424,6 +2628,43 @@ function LiveClass() {
                   )}
                 </div>
               </div>
+
+              {/* STUDENT: Intelligence Mirror */}
+              <div className="grid grid-cols-2 gap-3 shrink-0">
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 bg-gradient-to-br from-white to-gray-50">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter">Understanding</span>
+                    <span className={`text-[10px] font-bold ${confusionLevel > 40 ? 'text-red-500' : 'text-green-500'}`}>
+                      {100 - confusionLevel}%
+                    </span>
+                  </div>
+                  <div className="flex gap-1 h-8 items-end">
+                    {[1, 2, 3, 4, 5].map((bar) => {
+                      const isActive = (100 - confusionLevel) / 20 >= bar;
+                      return (
+                        <div
+                          key={bar}
+                          className={`flex-1 rounded-t-sm transition-all duration-500 ${isActive ? 'bg-green-400' : 'bg-gray-100'}`}
+                          style={{ height: isActive ? `${20 * bar}%` : "20%" }}
+                        ></div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 flex flex-col justify-center">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-tighter mb-1">Class Clarity</span>
+                  <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                    <div
+                      className={`h-full transition-all duration-1000 ${topicClarity[0]?.clarity > 60 ? 'bg-green-500' : 'bg-orange-500'}`}
+                      style={{ width: `${topicClarity[0]?.clarity || 0}%` }}
+                    ></div>
+                  </div>
+                  <span className="text-[10px] font-bold text-gray-700 mt-1">
+                    {Math.round(topicClarity.reduce((acc, t) => acc + t.clarity, 0) / topicClarity.length)}% Overall
+                  </span>
+                </div>
+              </div>
               <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 shrink-0">
                 <h4 className="m-0 text-gray-800 text-sm font-bold uppercase tracking-wider flex items-center gap-2 mb-3">
                   <span className="text-amber-500">📋</span> Summary so far
@@ -2444,6 +2685,82 @@ function LiveClass() {
                     </p>
                   )}
                 </div>
+              </div>
+              {Array.isArray(adaptiveQuiz) && adaptiveQuiz.length > 0 && (
+                <div className="bg-violet-50/70 rounded-2xl p-4 shadow-sm border border-violet-100 shrink-0">
+                  <h4 className="m-0 text-violet-900 text-sm font-bold uppercase tracking-wider mb-3">
+                    Adaptive Quiz from Live Poll
+                  </h4>
+                  <div className="space-y-3 max-h-52 overflow-y-auto pr-1">
+                    {adaptiveQuiz.slice(0, 2).map((q, qIndex) => (
+                      <div key={qIndex} className="bg-white border border-violet-100 rounded-xl p-3">
+                        <p className="m-0 text-xs font-semibold text-gray-900 mb-2">
+                          {qIndex + 1}. {q.question}
+                        </p>
+                        <div className="grid grid-cols-1 gap-2">
+                          {(q.options || []).map((opt, oIndex) => {
+                            const selected = quizAnswers[qIndex] === oIndex;
+                            return (
+                              <button
+                                key={oIndex}
+                                type="button"
+                                onClick={() =>
+                                  setQuizAnswers((prev) => ({
+                                    ...prev,
+                                    [qIndex]: oIndex,
+                                  }))
+                                }
+                                className={`text-left text-xs px-3 py-2 rounded-lg border transition ${selected
+                                  ? "bg-violet-600 text-white border-violet-600"
+                                  : "bg-violet-50 text-violet-900 border-violet-100 hover:bg-violet-100"
+                                  }`}
+                              >
+                                {String.fromCharCode(65 + oIndex)}. {opt}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="bg-emerald-50/70 rounded-2xl p-4 shadow-sm border border-emerald-100 shrink-0">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="m-0 text-emerald-900 text-sm font-bold uppercase tracking-wider">
+                    Personal Catch-Up Capsule
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={requestPersonalCapsule}
+                    disabled={capsuleLoading || !transcript.trim()}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white disabled:opacity-50"
+                  >
+                    {capsuleLoading ? "Generating..." : "Generate"}
+                  </button>
+                </div>
+                {personalCapsule ? (
+                  <div className="text-xs text-emerald-950 bg-white border border-emerald-100 rounded-xl p-3">
+                    <p className="m-0 font-semibold mb-2">
+                      {personalCapsule.title || "Your capsule"}
+                    </p>
+                    {Array.isArray(personalCapsule.five_minute_plan) ? (
+                      <ul className="m-0 pl-4 space-y-1">
+                        {personalCapsule.five_minute_plan.map((step, idx) => (
+                          <li key={idx}>{step}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="m-0 whitespace-pre-wrap">
+                        {JSON.stringify(personalCapsule, null, 2)}
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="m-0 text-xs text-emerald-800/80">
+                    Generate a focused 5-minute recovery plan tailored to this live class.
+                  </p>
+                )}
               </div>
               <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 flex-1 flex flex-col min-h-70">
                 <div className="flex items-center justify-between mb-4">
@@ -2593,8 +2910,18 @@ style.innerHTML = `
 .custom-scrollbar::-webkit-scrollbar-thumb {
   background: #cbd5e1;
   border-radius: 10px;
-
 }
 
+@keyframes bounceSlow {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+.animate-bounce-slow {
+  animation: bounceSlow 2s infinite ease-in-out;
+}
 `;
 document.head.appendChild(style);
+
+
+
+

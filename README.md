@@ -118,4 +118,4 @@ See the `LICENSE` file for more details.
 
 ---
 
-Built for students, teachers, and anyone who believes learning should be smarter and more accessible.
+
